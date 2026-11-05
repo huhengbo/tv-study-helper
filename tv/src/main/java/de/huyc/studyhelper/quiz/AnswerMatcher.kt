@@ -11,7 +11,8 @@ import net.sourceforge.pinyin4j.format.HanyuPinyinVCharType
  * 判断语音题是否答对（选择题按选项下标判断，不经过这里）。识别结果常带标点、语气词或同音字，所以：
  * - 认字题按拼音（不带声调）比对，「山」读成识别出的「删」也算对；
  * - 数学题把中文数字转成阿拉伯数字后比对；
- * - 英语题只保留字母比对，并允许识别结果里包含答案（如「是 banana」）。
+ * - 英语题只保留字母比对，并允许识别结果里包含答案（如「是 banana」）；
+ *   离线模型英语偏弱，常错一两个字母（apple → appel），较长的词允许少量拼写差异。
  */
 object AnswerMatcher {
 
@@ -47,7 +48,26 @@ object AnswerMatcher {
     private fun englishMatches(heard: String, answer: String): Boolean {
         val h = heard.lowercase().filter { it in 'a'..'z' }
         val a = answer.lowercase().filter { it in 'a'..'z' }
-        return a.isNotEmpty() && h.contains(a)
+        if (a.isEmpty()) return false
+        if (h.contains(a)) return true
+        // 短词差一个字母就是另一个词（cat/hat），不放宽；按识别出的每个词和整句分别比较
+        val allowed = when {
+            a.length >= 7 -> 2
+            a.length >= 4 -> 1
+            else -> return false
+        }
+        val words = heard.lowercase().split(Regex("[^a-z]+")).filter { it.isNotEmpty() } + h
+        return words.any { editDistance(it, a) <= allowed }
+    }
+
+    /** 编辑距离，相邻两个字母互换（appel/apple）也算一步。 */
+    private fun editDistance(x: String, y: String): Int {
+        val d = Array(x.length + 1) { i -> IntArray(y.length + 1) { j -> if (i == 0) j else if (j == 0) i else 0 } }
+        for (i in 1..x.length) for (j in 1..y.length) {
+            d[i][j] = minOf(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + if (x[i - 1] == y[j - 1]) 0 else 1)
+            if (i > 1 && j > 1 && x[i - 1] == y[j - 2] && x[i - 2] == y[j - 1]) d[i][j] = minOf(d[i][j], d[i - 2][j - 2] + 1)
+        }
+        return d[x.length][y.length]
     }
 
     fun isHan(c: Char) = c in '一'..'鿿'

@@ -193,8 +193,9 @@ scripts/                   setup_tv.sh 用电脑安装与授权（备用）、ch
 
 - 语音键：内核上报 `KEY_F5`（scanCode 63），应用层是 `KEYCODE_UNKNOWN`，前台窗口能收到按下/松开。
 - 按语音键时系统蓝牙服务会拉起小爱同学。答题界面放在高于小爱浮窗的系统浮层（`TYPE_SYSTEM_ERROR`）上，焦点不会被抢走。
-- 遥控器麦克风走标准 `AudioRecord(VOICE_RECOGNITION, 16kHz, 单声道)`；小米的录音策略是先开始录音者占用麦克风。
-- 麦克风 HAL 只有一条共享数据通道，小爱同时打开录音会分走约一半音频。程序在开始录音后向小爱发送 `com.xiaomi.mitv.voice.KEYUP` 让其退出录音。**这一步待实测确认**（可在首页「语音诊断」里按住语音键录音、按确认键回放）。
+- 遥控器麦克风走标准 `AudioRecord(VOICE_RECOGNITION, 16kHz, 单声道)`。蓝牙服务把遥控器音频经一个 socket 送进麦克风 HAL（`audio.rc.amlogic.so`），HAL 没有缓冲也不分发，同时有几路录音时每个音频包只归其中一路；小米改过的录音策略允许多路同时录音，所以小爱同学同时录音时双方都录不全，发 `KEYUP` 也救不回来。
+- 因此家长页提供「停用小爱同学」：通过本机 adb 执行 `appops set com.xiaomi.voicecontrol RECORD_AUDIO ignore`，重启后仍有效，「恢复小爱同学」改回 `allow`。小爱是系统 uid 应用，`pm disable-user` 会被拒绝。停用后按语音键时小爱会弹「录音失败」的提示，不影响答题。
+- 按键后约 250ms 内只要关闭一路录音（包括小爱被拒绝的那次），这次按键剩下的音频就送不进来，所以程序在按下后 300ms 才打开录音、中途不关。
 - 系统「动画程序时长缩放」出厂为 0，程序在本进程内恢复为 1，不改系统设置。
 - 系统不信任 Let's Encrypt 根证书（见「版本更新」）。
 

@@ -8,7 +8,8 @@ import kotlin.math.exp
 import kotlin.math.sin
 
 /** 答题用的短音效。没有音频资源文件，音色由 [SfxSynth] 合成，免版权也不占 APK 体积。 */
-enum class Sound { CORRECT, WRONG, DONE, STICKER }
+/** [LISTEN] 是麦克风真正开始收音时的「叮」，提示孩子可以开口了。 */
+enum class Sound { CORRECT, WRONG, DONE, STICKER, LISTEN }
 
 /**
  * 播放 [Sound]。每个音效一个静态 [AudioTrack]，用到时才合成；走媒体音量，和朗读同一个流。
@@ -63,6 +64,7 @@ object SfxSynth {
         Sound.WRONG -> listOf(Note(A3, 0, 200, 0.4), Note(F3, 140, 280, 0.4))
         Sound.DONE -> listOf(Note(C5, 0, 260), Note(E5, 140, 260), Note(G5, 280, 260), Note(C6, 440, 520, 0.55))
         Sound.STICKER -> listOf(Note(G5, 0, 180, 0.4), Note(C6, 90, 180, 0.4), Note(E6, 180, 180, 0.4), Note(G6, 270, 420, 0.45))
+        Sound.LISTEN -> listOf(Note(G5, 0, 120, 0.35), Note(C6, 90, 180, 0.35))
     }
 
     fun render(sound: Sound): ShortArray {

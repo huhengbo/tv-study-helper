@@ -27,6 +27,8 @@ object LocalAsr {
     private const val TAG = "LocalAsr"
     private const val IDLE_MS = 3 * 60_000L
     private const val THREADS = 2
+    /** 默认热词权重是 1.5（[OnlineRecognizerConfig.hotwordsScore]）。 */
+    private const val ENGLISH_HOTWORD_SCORE = 3.0f
 
     private var libLoaded = false
     private var recognizer: OnlineRecognizer? = null
@@ -200,13 +202,17 @@ object LocalAsr {
         releaseTask = worker.schedule({ release() }, IDLE_MS, TimeUnit.MILLISECONDS)
     }
 
-    /** 每行一个热词。模型的英文词表是大写的；词表里没有的字会让热词编码失败，先过滤掉。 */
+    /**
+     * 每行一个热词。模型的英文词表是大写的；词表里没有的字会让热词编码失败，先过滤掉。
+     * 这个双语模型以中文为主，孩子单说一个英文词常被听成中文（sun →「飒飒」），英文热词单独加大权重。
+     */
     private fun hotwords(hints: List<String>): String = hints.asSequence()
         .map { it.trim().uppercase() }
         .filter { h ->
             h.isNotEmpty() && h.all { c -> c == ' ' || c in 'A'..'Z' || c.toString() in tokens }
         }
         .distinct()
+        .map { h -> if (h.any { it in 'A'..'Z' }) "$h :$ENGLISH_HOTWORD_SCORE" else h }
         .joinToString("\n")
 
     private fun floats(pcm: ByteArray, length: Int): FloatArray {

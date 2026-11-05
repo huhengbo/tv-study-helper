@@ -19,11 +19,14 @@ import android.widget.TextView
 import de.huyc.studyhelper.App
 import de.huyc.studyhelper.BuildConfig
 import de.huyc.studyhelper.core.Permissions
+import de.huyc.studyhelper.core.SelfGrant
 import de.huyc.studyhelper.data.CountMode
 import de.huyc.studyhelper.diag.VoiceDiagActivity
 import de.huyc.studyhelper.quiz.QuizMode
+import de.huyc.studyhelper.voice.XiaoaiGuard
 import de.huyc.studyhelper.web.AdminServer
 import de.huyc.studyhelper.web.Net
+import kotlin.concurrent.thread
 
 /**
  * 家长面板：从首页右上角的「家长」进入。守护状态和规则、手机扫码、试一试答题、
@@ -41,6 +44,9 @@ class ParentActivity : Activity() {
     private lateinit var pauseButton: TextView
     private lateinit var setupButton: TextView
     private lateinit var perms: TextView
+    private lateinit var xiaoaiButton: TextView
+    private lateinit var xiaoaiHint: TextView
+    private var xiaoaiBusy = false
     private lateinit var qr: ImageView
     private lateinit var url: TextView
     private var gate: ParentGate? = null
@@ -101,6 +107,17 @@ class ParentActivity : Activity() {
         setupButton = button("🔧  开启限时守护") { startActivity(Intent(this, SetupActivity::class.java)) }
         buttons.addView(setupButton)
         left.addView(buttons, LinearLayout.LayoutParams(-2, -2).apply { leftMargin = -dp(8) })
+
+        // 小爱同学会和本应用抢遥控器的麦克风，见 XiaoaiGuard
+        val xiaoaiRow = LinearLayout(this).apply {
+            gravity = Gravity.CENTER_VERTICAL
+            clipChildren = false; clipToPadding = false; setPadding(dp(8), 0, dp(8), dp(8))
+        }
+        xiaoaiButton = button("") { toggleXiaoai() }
+        xiaoaiRow.addView(xiaoaiButton)
+        xiaoaiHint = text("", 13f, theme.inkSoft)
+        xiaoaiRow.addView(xiaoaiHint, LinearLayout.LayoutParams(0, -2, 1f).apply { leftMargin = dp(8) })
+        left.addView(xiaoaiRow, LinearLayout.LayoutParams(-1, -2).apply { leftMargin = -dp(8) })
         perms = text("", 13f, theme.inkSoft)
         left.addView(perms, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(6) })
         content.addView(left, LinearLayout.LayoutParams(0, -2, 1f))
@@ -129,6 +146,7 @@ class ParentActivity : Activity() {
         url.text = link ?: "未连接网络"
         qr.setImageBitmap(link?.let { qrBitmap(it, dp(220), theme.ink) })
         handler.post(refresher)
+        if (!xiaoaiBusy) renderXiaoai()
         if (gate == null && currentFocus == null) root.post { pauseButton.requestFocus() }
     }
 
@@ -165,6 +183,39 @@ class ParentActivity : Activity() {
     }
 
     private fun mark(ok: Boolean) = if (ok) "✅" else "⚠️"
+
+    private fun renderXiaoai(message: String? = null) {
+        val blocked = XiaoaiGuard.micBlocked(this)
+        xiaoaiButton.setEmojiText(if (blocked) "🔈  恢复小爱同学" else "🔇  停用小爱同学")
+        xiaoaiHint.text = message ?: if (blocked) "小爱同学已停用，语音键只给学习小助手用。恢复后答语音题容易听不清。"
+            else "答语音题时小爱同学会抢遥控器的麦克风，容易听不清，建议停用。"
+    }
+
+    /** 通过本机 adb 停用或恢复小爱同学的录音，需要电视已打开「ADB 调试」。 */
+    private fun toggleXiaoai() {
+        if (xiaoaiBusy) return
+        if (!SelfGrant.adbEnabled(this)) {
+            renderXiaoai("需要先打开 ADB 调试：设置 → 账号与安全 → ADB 调试，打开后再按一次。")
+            return
+        }
+        val block = !XiaoaiGuard.micBlocked(this)
+        xiaoaiBusy = true
+        renderXiaoai("正在设置…如果电视弹出「允许 USB 调试」，请选「确定」。")
+        thread(name = "xiaoai-mic") {
+            val outcome = XiaoaiGuard.setMicBlocked(applicationContext, block)
+            runOnUiThread {
+                xiaoaiBusy = false
+                if (isDestroyed) return@runOnUiThread
+                renderXiaoai(when (outcome) {
+                    is SelfGrant.Outcome.Done -> if (block) "已停用小爱同学，重启电视后仍有效。现在可以关掉 ADB 调试。"
+                        else "已恢复小爱同学。现在可以关掉 ADB 调试。"
+                    is SelfGrant.Outcome.NotConfirmed -> "没有收到确认。请再按一次，并在电视弹出的提示里选「确定」；电脑正连着这台电视的 adb 时请先断开。"
+                    is SelfGrant.Outcome.Unreachable -> "连不上电视的 ADB，请确认「ADB 调试」已打开。"
+                    is SelfGrant.Outcome.Failed -> "设置失败：${outcome.reason}"
+                })
+            }
+        }
+    }
 
     /** 暂停/恢复守护需要家长验证：扫码由手机端切换，或（设置允许时）电视上输密码。 */
     private fun askParent() {

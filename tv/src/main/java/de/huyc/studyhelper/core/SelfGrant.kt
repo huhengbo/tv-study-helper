@@ -21,7 +21,7 @@ import java.security.spec.PKCS8EncodedKeySpec
  * 执行与 scripts/setup_tv.sh 相同的几条授权命令（录音、悬浮窗、使用情况、无障碍）。
  * 电视会弹出一次「允许 USB 调试」，家长用遥控器确认即可。
  *
- * 只执行下面写死的命令，不接受任何外部输入。
+ * 另外可以收回或恢复小爱同学的录音权限（[setXiaoaiMic]）。只执行下面写死的命令，不接受任何外部输入。
  */
 object SelfGrant {
     private const val HOST = "127.0.0.1"
@@ -30,6 +30,7 @@ object SelfGrant {
     /** 家长要在电视上点确认，所以连接和握手的等待时间放宽。 */
     private const val CONFIRM_TIMEOUT_MS = 120_000
     private const val COMMAND_TIMEOUT_MS = 15_000
+    private const val XIAOAI_PKG = "com.xiaomi.voicecontrol"
 
     sealed class Outcome {
         /** 命令已全部执行；各项是否真的生效要再看 [Permissions.status]。 */
@@ -49,7 +50,21 @@ object SelfGrant {
         Settings.Global.getInt(context.contentResolver, Settings.Global.ADB_ENABLED, 0) == 1
 
     /** 阻塞执行，需在后台线程调用。 */
-    fun grant(context: Context): Outcome {
+    fun grant(context: Context): Outcome = withAdb(context) { runGrantCommands(it, context) }
+
+    /**
+     * 收回或恢复小爱同学的录音权限（appops，重启后仍有效）。小爱是系统 uid 的应用，`pm disable` 停不掉，
+     * 但收回录音后它打不开麦克风，遥控器的音频就只给本应用，见 [de.huyc.studyhelper.voice.XiaoaiGuard]。
+     * 阻塞执行，需在后台线程调用；执行后读回状态，没生效时返回 [Outcome.Failed]。
+     */
+    fun setXiaoaiMic(context: Context, allow: Boolean): Outcome = withAdb(context) { adb ->
+        val mode = if (allow) "allow" else "ignore"
+        shell(adb, "appops set $XIAOAI_PKG RECORD_AUDIO $mode")
+        val now = shell(adb, "appops get $XIAOAI_PKG RECORD_AUDIO").trim()
+        if (!now.startsWith("RECORD_AUDIO: $mode")) throw IllegalStateException("设置没有生效：$now")
+    }
+
+    private fun withAdb(context: Context, commands: (AdbClient) -> Unit): Outcome {
         var connected = false
         return try {
             val (privateKey, publicKey) = loadKeys(context)
@@ -57,7 +72,7 @@ object SelfGrant {
                 adb.connect(CONFIRM_TIMEOUT_MS)
                 connected = true
                 adb.setReadTimeout(COMMAND_TIMEOUT_MS)
-                runGrantCommands(adb, context)
+                commands(adb)
             }
             Outcome.Done
         } catch (e: SocketTimeoutException) {

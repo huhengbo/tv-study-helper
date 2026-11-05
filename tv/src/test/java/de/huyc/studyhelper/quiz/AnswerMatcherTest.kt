@@ -42,6 +42,17 @@ class AnswerMatcherTest {
         assertFalse(AnswerMatcher.isCorrect(ENGLISH, "apple", listOf("banana")))
     }
 
+    @Test fun englishToleratesSmallMisspellingInLongerWords() {
+        assertTrue(AnswerMatcher.isCorrect(ENGLISH, "appel", listOf("apple")))
+        assertTrue(AnswerMatcher.isCorrect(ENGLISH, "bikes", listOf("bike")))
+        assertTrue(AnswerMatcher.isCorrect(ENGLISH, "it's a elefant", listOf("elephant")))
+        assertTrue(AnswerMatcher.isCorrect(ENGLISH, "ice crem", listOf("ice cream")))
+        // 短词不放宽，明显不同的词也不算
+        assertFalse(AnswerMatcher.isCorrect(ENGLISH, "hat", listOf("cat")))
+        assertFalse(AnswerMatcher.isCorrect(ENGLISH, "fuck.", listOf("bike")))
+        assertFalse(AnswerMatcher.isCorrect(ENGLISH, "飒飒", listOf("sun")))
+    }
+
     @Test fun extractNumbers() {
         assertEquals(listOf(7, 15), AnswerMatcher.extractNumbers("7和十五"))
         assertEquals(listOf(2), AnswerMatcher.extractNumbers("两"))
