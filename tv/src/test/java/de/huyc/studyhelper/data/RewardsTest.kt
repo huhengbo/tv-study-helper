@@ -24,6 +24,14 @@ class RewardsTest {
         assertEquals(15, state.earnedMinutes)
     }
 
+    @Test fun nextMinutesMatchesWhatTheRoundPays() {
+        assertEquals(5, RewardRules.nextMinutes(0, 5, 15))
+        assertEquals(5, RewardRules.nextMinutes(10, 10, 15))
+        assertEquals(0, RewardRules.nextMinutes(15, 5, 15))
+        assertEquals(0, RewardRules.nextMinutes(0, 5, 0))
+        assertEquals(0, RewardRules.nextMinutes(0, 0, 15))
+    }
+
     @Test fun lastRoundBeforeCapGetsOnlyTheRemainder() {
         val r = complete(RewardState(day = "2024-11-05", earnedMinutes = 12))
         assertEquals(3, r.minutes)

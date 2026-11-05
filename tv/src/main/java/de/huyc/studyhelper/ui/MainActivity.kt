@@ -1,59 +1,68 @@
 package de.huyc.studyhelper.ui
 
+import android.animation.ObjectAnimator
+import android.animation.ValueAnimator
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
-import android.graphics.Canvas
 import android.graphics.Color
-import android.graphics.Paint
-import android.graphics.RectF
+import android.graphics.ColorMatrix
+import android.graphics.ColorMatrixColorFilter
+import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.view.Gravity
 import android.view.View
+import android.view.animation.AccelerateDecelerateInterpolator
+import android.view.animation.DecelerateInterpolator
 import android.view.animation.OvershootInterpolator
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import de.huyc.studyhelper.App
-import de.huyc.studyhelper.BuildConfig
+import de.huyc.studyhelper.core.GuardService
 import de.huyc.studyhelper.core.Permissions
 import de.huyc.studyhelper.data.DailyStats
+import de.huyc.studyhelper.data.RewardRules
 import de.huyc.studyhelper.data.StickerCatalog
 import de.huyc.studyhelper.quiz.QuizMode
-import de.huyc.studyhelper.core.GuardService
-import de.huyc.studyhelper.diag.VoiceDiagActivity
-import de.huyc.studyhelper.web.AdminServer
-import de.huyc.studyhelper.web.Net
+import de.huyc.studyhelper.voice.VoiceProviders
 
 /**
- * 电视端首页，学习为主、限时为辅：
- * 最大的是「开始学习」卡片和贴纸册，剩余观看时间是一条细的时间条，
- * 家长功能（试一试、暂停守护、语音诊断、开启权限）收在底部一行小按钮里，右侧是手机扫码入口。
+ * 电视端首页，面向孩子，手账贴纸风格（规则见 docs/design/DESIGN.md）：
+ * 纸面上贴着几张入口贴纸（学习、贴纸册，以后的学习游戏也贴在这一排），选中的那张摆正、抬起，并念出介绍。
+ * 大人的东西在角落：右上角便利贴是剩余观看时间，右下角小锁是家长入口（规则、扫码、暂停守护等在 [ParentActivity]）。
  */
 class MainActivity : Activity() {
     private val app get() = App.instance
     private val theme get() = Themes.get(app.store.settings.theme)
     private val handler = Handler(Looper.getMainLooper())
     private lateinit var root: FrameLayout
-    private lateinit var timeBar: TimeBar
-    private lateinit var timeText: TextView
-    private lateinit var statusChip: TextView
-    private lateinit var summary: TextView
-    private lateinit var pauseButton: TextView
-    private lateinit var studyCard: View
-    private lateinit var studyHint: TextView
-    private lateinit var studyToday: TextView
-    private lateinit var stickerCount: TextView
+    private lateinit var peek: ImageView
+    private lateinit var title: TextView
+    private lateinit var band: Highlighter
+    private lateinit var note: FrameLayout
+    private lateinit var noteTop: TextView
+    private lateinit var noteNum: TextView
+    private lateinit var noteUnit: TextView
+    private lateinit var studyTile: StickerTile
+    private lateinit var stickerTile: StickerTile
+    private lateinit var stampRow: LinearLayout
+    private lateinit var stamps: LinearLayout
+    private lateinit var lock: FrameLayout
+    private lateinit var lockAlert: View
+    private var wiggle: ObjectAnimator? = null
     private var ticks = 0
-    private lateinit var setupButton: TextView
-    private lateinit var perms: TextView
-    private lateinit var qr: ImageView
-    private lateinit var url: TextView
-    private var gate: ParentGate? = null
-    private var pausedWhenGateOpened = false
+    private var entered = false
+    private var lastFocused: View? = null
+    private var shownStars = -1
+    /** 选中某个入口时念的话，随数据刷新。 */
+    private val lines = mutableMapOf<View, String>()
+    /** 刚进入页面时的自动聚焦不朗读，孩子按方向键挪动后才念。 */
+    private var userMoved = false
+    private val speakLater = Runnable { speakFocused() }
 
     private val refresher = object : Runnable {
         override fun run() { refresh(); handler.postDelayed(this, 1000) }
@@ -63,7 +72,7 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         GuardService.start(this)
         root = FrameLayout(this)
-        root.addView(FloatingBackground(this, theme), FrameLayout.LayoutParams(-1, -1))
+        root.addView(PaperBackground(this, theme), FrameLayout.LayoutParams(-1, -1))
         root.addView(buildContent(), FrameLayout.LayoutParams(-1, -1))
         setContentView(root)
         if (savedInstanceState == null && !app.store.setupPrompted && !Permissions.status(this).allGranted) {
@@ -73,255 +82,273 @@ class MainActivity : Activity() {
     }
 
     private fun buildContent(): View {
-        val content = LinearLayout(this).apply {
+        val page = FrameLayout(this).apply { clipChildren = false; clipToPadding = false }
+
+        // 左上：探头的吉祥物和手写标题，标题下一道荧光笔
+        peek = ImageView(this).apply { setImageBitmap(Emoji.bitmap(context, theme.mascots.first())); rotation = -8f }
+        page.addView(peek, FrameLayout.LayoutParams(dp(112), dp(112), Gravity.TOP or Gravity.START).apply { leftMargin = dp(44); topMargin = dp(24) })
+        band = Highlighter(this, withAlpha(theme.star, 0.6f))
+        title = handText("今天玩点什么？", 46f, theme.ink).apply { background = band; setPadding(dp(8), 0, dp(12), 0) }
+        page.addView(title, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.START).apply { leftMargin = dp(168); topMargin = dp(48) })
+
+        // 右上：便利贴写着还能看几分钟
+        note = FrameLayout(this).apply {
             clipChildren = false; clipToPadding = false
-            setPadding(dp(56), dp(30), dp(56), dp(24))
-            gravity = Gravity.CENTER_VERTICAL
+            setBackgroundColor(NOTE_YELLOW); elevation = dp(6f); rotation = 4f
         }
-        val left = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; clipChildren = false; clipToPadding = false }
+        val noteText = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER }
+        noteTop = handText("还能看", 21f, NOTE_INK)
+        noteNum = handText("", 40f, theme.accentDark)
+        noteUnit = handText("分钟", 21f, NOTE_INK)
+        for (v in listOf(noteTop, noteNum, noteUnit)) noteText.addView(v, LinearLayout.LayoutParams(-2, -2))
+        note.addView(noteText, FrameLayout.LayoutParams(-1, -1))
+        note.addView(View(this).apply { setBackgroundColor(withAlpha(Color.WHITE, 0.55f)); rotation = -6f; elevation = dp(1f) },
+            FrameLayout.LayoutParams(dp(60), dp(22), Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply { topMargin = -dp(10) })
+        page.addView(note, FrameLayout.LayoutParams(dp(132), dp(116), Gravity.TOP or Gravity.END).apply { rightMargin = dp(46); topMargin = dp(36) })
 
-        // 标题
-        val titleRow = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
-        titleRow.addView(ImageView(this).apply {
-            setImageBitmap(Emoji.bitmap(context, theme.mascots.first()))
-            setPadding(dp(14), dp(14), dp(14), dp(14))
-            background = pill(context, theme.card); elevation = dp(4f)
-        }, LinearLayout.LayoutParams(dp(84), dp(84)))
-        val titles = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(18), 0, 0, 0) }
-        titles.addView(text("学习小助手", 38f, theme.ink, bold = true))
-        titles.addView(text("每天学一点，看电视的时间也能攒出来", 17f, theme.inkSoft))
-        titleRow.addView(titles)
-        left.addView(titleRow)
-
-        // 主区域：开始学习（大）+ 我的贴纸
-        val main = LinearLayout(this).apply { clipChildren = false; clipToPadding = false; setPadding(dp(8), dp(8), dp(8), dp(8)) }
-        studyCard = studyCard()
-        main.addView(studyCard, LinearLayout.LayoutParams(0, dp(150), 2f))
-        main.addView(stickerCard(), LinearLayout.LayoutParams(0, dp(150), 1f).apply { leftMargin = dp(18) })
-        left.addView(main, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(14); leftMargin = -dp(8); rightMargin = -dp(8) })
-
-        // 观看时间：一条细的时间条
-        val timeCard = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            background = cardBackground(context, withAlpha(theme.card, 0.8f), 24)
-            setPadding(dp(22), dp(14), dp(22), dp(14))
+        // 中间：一排入口贴纸，错落、各自歪一点
+        val row = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL; clipChildren = false; clipToPadding = false }
+        studyTile = StickerTile(this, theme, "学习", tape(0), iconDp = 124, tilt = -5f) { app.lock.showQuiz(QuizMode.STUDY) }
+        studyTile.setIcon("1f4da")
+        row.addView(studyTile)
+        stickerTile = StickerTile(this, theme, "贴纸册", tape(1), iconDp = 100, tilt = 4f) {
+            startActivity(Intent(this, StickerBookActivity::class.java))
         }
-        val timeRow = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
-        statusChip = text("", 13f, Color.WHITE, bold = true).apply { setPadding(dp(12), dp(3), dp(12), dp(3)) }
-        timeRow.addView(statusChip)
-        timeText = text("", 20f, theme.ink, bold = true).apply { setPadding(dp(14), 0, 0, 0) }
-        timeRow.addView(timeText)
-        timeCard.addView(timeRow)
-        timeBar = TimeBar(this, theme)
-        timeCard.addView(timeBar, LinearLayout.LayoutParams(-1, dp(8)).apply { topMargin = dp(10) })
-        summary = text("", 13f, theme.inkSoft)
-        timeCard.addView(summary, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(8) })
-        left.addView(timeCard, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(10) })
+        row.addView(stickerTile, LinearLayout.LayoutParams(-2, -2).apply { leftMargin = dp(96); topMargin = dp(34) })
+        page.addView(row, FrameLayout.LayoutParams(-2, -2, Gravity.CENTER).apply { topMargin = dp(36) })
 
-        // 家长功能：底部一行小按钮
-        val parent = LinearLayout(this).apply {
-            gravity = Gravity.CENTER_VERTICAL
-            // 按钮获得焦点时会放大并带投影，不能被父布局裁掉
-            clipChildren = false; clipToPadding = false; setPadding(dp(8), dp(14), dp(8), dp(4))
-        }
-        parent.addView(text("家长", 13f, theme.inkSoft).apply { setPadding(0, 0, dp(12), 0) })
-        parent.addView(button("✏️  试一试答题") { app.lock.showQuiz(QuizMode.PREVIEW) })
-        pauseButton = button("") { askParent() }
-        parent.addView(pauseButton)
-        parent.addView(button("🎤  语音诊断") { startActivity(Intent(this, VoiceDiagActivity::class.java)) })
-        // 权限齐全时隐藏
-        setupButton = button("🔧  开启权限") { startActivity(Intent(this, SetupActivity::class.java)) }
-        parent.addView(setupButton)
-        left.addView(parent, LinearLayout.LayoutParams(-2, -2).apply { leftMargin = -dp(8) })
-        perms = text("", 12f, theme.inkSoft)
-        left.addView(perms, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(2) })
-        content.addView(left, LinearLayout.LayoutParams(0, -2, 1f))
+        // 左下：今天的星星印章
+        stampRow = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL; clipChildren = false; clipToPadding = false }
+        stampRow.addView(handText("今天", 26f, NOTE_INK).apply { setPadding(0, 0, dp(8), 0) })
+        stamps = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL; clipChildren = false; clipToPadding = false }
+        stampRow.addView(stamps)
+        page.addView(stampRow, FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.START).apply { leftMargin = dp(46); bottomMargin = dp(28) })
 
-        // 手机扫码：给家长用，比学习入口小
-        val qrCard = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER_HORIZONTAL
-            background = cardBackground(context, withAlpha(theme.card, 0.85f), 28)
-            elevation = dp(4f)
-            setPadding(dp(20), dp(20), dp(20), dp(16))
+        // 右下：家长小锁，平时很淡，选中才清楚；缺权限时带个红点
+        lock = FrameLayout(this).apply { isFocusable = true; alpha = 0.55f }
+        lock.addView(ImageView(this).apply { setImageBitmap(Emoji.bitmap(context, "1f512")) },
+            FrameLayout.LayoutParams(dp(28), dp(28), Gravity.CENTER))
+        lockAlert = View(this).apply { background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(theme.error) } }
+        lock.addView(lockAlert, FrameLayout.LayoutParams(dp(12), dp(12), Gravity.TOP or Gravity.END).apply { topMargin = dp(6); rightMargin = dp(6) })
+        val lockFocused = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Color.WHITE) }
+        lock.setOnClickListener { startActivity(Intent(this, ParentActivity::class.java)) }
+        page.addView(lock, FrameLayout.LayoutParams(dp(54), dp(54), Gravity.BOTTOM or Gravity.END).apply { rightMargin = dp(42); bottomMargin = dp(24) })
+
+        // 遥控器焦点路径写死：入口之间左右切换，往下到小锁，小锁往上回「学习」
+        val tiles = listOf(studyTile, stickerTile)
+        for (v in tiles + lock) v.id = View.generateViewId()
+        tiles.forEachIndexed { i, t ->
+            t.nextFocusLeftId = tiles[maxOf(i - 1, 0)].id
+            t.nextFocusRightId = tiles[minOf(i + 1, tiles.size - 1)].id
+            t.nextFocusUpId = t.id
+            t.nextFocusDownId = lock.id
         }
-        qrCard.addView(text("", 17f, theme.ink, bold = true).apply { setEmojiText("📱 家长扫码管理") })
-        qr = ImageView(this)
-        qrCard.addView(qr, LinearLayout.LayoutParams(dp(170), dp(170)).apply { topMargin = dp(10); bottomMargin = dp(8) })
-        url = text("", 13f, theme.accentDark, bold = true)
-        qrCard.addView(url)
-        qrCard.addView(text("手机和电视需连同一个 WiFi", 12f, theme.inkSoft).apply { setPadding(0, dp(4), 0, 0) })
-        content.addView(qrCard, LinearLayout.LayoutParams(dp(230), -2).apply { leftMargin = dp(36) })
-        return content
+        lock.nextFocusUpId = studyTile.id
+        lock.nextFocusLeftId = tiles.last().id
+        lock.nextFocusRightId = lock.id
+        lock.nextFocusDownId = lock.id
+        for (v in tiles + lock) {
+            val inner = v.onFocusChangeListener
+            v.setOnFocusChangeListener { view, has ->
+                inner?.onFocusChange(view, has)
+                if (view === lock) {
+                    lock.background = if (has) lockFocused else null
+                    lock.animate().alpha(if (has) 1f else 0.55f).scaleX(if (has) 1.25f else 1f).scaleY(if (has) 1.25f else 1f)
+                        .setInterpolator(OvershootInterpolator(2.5f)).setDuration(220).start()
+                }
+                if (has) onFocused()
+            }
+        }
+        return page
     }
 
-    /** 最醒目的入口：强调色大卡片，写明这一轮能得到什么。 */
-    private fun studyCard(): View {
-        val card = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(26), dp(14), dp(26), dp(14))
-            isFocusable = true
-            elevation = dp(8f)
-        }
-        card.addView(text("", 34f, Color.WHITE, bold = true).apply { setEmojiText("📚  开始学习") })
-        studyHint = text("", 16f, Color.WHITE)
-        card.addView(studyHint, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(6) })
-        studyToday = text("", 14f, withAlpha(Color.WHITE, 0.8f))
-        card.addView(studyToday, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(4) })
-        styleCard(card, theme.accent, theme.accentDark, Color.WHITE)
-        card.setOnClickListener { app.lock.showQuiz(QuizMode.STUDY) }
-        return card
+    /** 胶带颜色取主题的色块颜色，每张贴纸不同。 */
+    private fun tape(i: Int) = theme.blobs[i % theme.blobs.size].let { Color.rgb(Color.red(it), Color.green(it), Color.blue(it)) }
+
+    /** 选中后停一会儿没再挪动，就把这个入口念出来；吉祥物也歪头看过去。 */
+    private fun onFocused() {
+        handler.removeCallbacks(speakLater)
+        if (userMoved) handler.postDelayed(speakLater, 450)
+        userMoved = true
+        peek.animate().translationY(-dp(10f)).setDuration(120).withEndAction {
+            peek.animate().translationY(0f).setDuration(320).setInterpolator(OvershootInterpolator(3f)).start()
+        }.start()
     }
 
-    private fun stickerCard(): View {
-        val card = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
-            setPadding(dp(14), 0, dp(14), 0)
-            isFocusable = true
-            elevation = dp(6f)
-        }
-        card.addView(text("", 17f, theme.ink, bold = true).apply { setEmojiText("🌟 我的贴纸") })
-        stickerCount = text("", 30f, theme.accentDark, bold = true)
-        card.addView(stickerCount, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(4) })
-        styleCard(card, theme.card, theme.card, theme.accent)
-        card.setOnClickListener { startActivity(Intent(this, StickerBookActivity::class.java)) }
-        return card
-    }
-
-    /** 大卡片的聚焦效果：放大，描边，换深一点的底色。 */
-    private fun styleCard(card: View, normal: Int, focused: Int, stroke: Int) {
-        val n = cardBackground(this, normal, 28)
-        val f = cardBackground(this, focused, 28).apply { setStroke(dp(4), stroke) }
-        card.background = n
-        card.setOnFocusChangeListener { v, has ->
-            v.background = if (has) f else n
-            v.animate().scaleX(if (has) 1.05f else 1f).scaleY(if (has) 1.05f else 1f)
-                .setInterpolator(OvershootInterpolator(2.5f)).setDuration(220).start()
-        }
+    private fun speakFocused() {
+        val s = app.store.settings
+        if (!s.voice.ttsEnabled) return
+        val line = lines[currentFocus ?: return] ?: return
+        app.speaker.speak(VoiceProviders.tts(this, s.voice), line)
     }
 
     override fun onResume() {
         super.onResume()
-        val address = Net.lanAddress()
-        val link = if (address != null) "http://$address:${AdminServer.PORT}" else null
-        url.text = link ?: "未连接网络"
-        qr.setImageBitmap(link?.let { qrBitmap(it, dp(170), theme.ink) })
         ticks = 0
+        refresh()
         handler.post(refresher)
-        (root.getChildAt(1) as? LinearLayout)?.let { entrance(it) }
-        root.post { studyCard.requestFocus() }
+        val firstTime = !entered
+        if (firstTime) {
+            entered = true
+            entrance()
+        } else {
+            startIdle()
+        }
+        userMoved = false
+        val target = lastFocused ?: studyTile
+        // 第一次进入等贴纸贴好以后再聚焦，否则选中动画会被入场动画盖掉
+        root.postDelayed({ target.requestFocus() }, if (firstTime) ENTRANCE_MS else 0)
     }
 
     override fun onPause() {
-        handler.removeCallbacks(refresher)
+        lastFocused = currentFocus
+        handler.removeCallbacksAndMessages(null)
+        wiggle?.cancel()
+        app.speaker.stop()
         super.onPause()
     }
 
     private fun refresh() {
         val store = app.store
-        // 家长已在手机上切换了暂停状态，关闭扫码面板
-        if (gate != null && store.paused != pausedWhenGateOpened) closeGate()
+        // 便利贴：守护暂停时收起来，时间快到时数字变红并不时抖一下
         val limit = store.limitSeconds
         val left = (limit - store.usedSeconds).coerceAtLeast(0)
-        timeBar.set(left, limit)
-        timeText.text = "还可以看 %d:%02d".format(left / 60, left % 60)
-        val (label, color) = when {
-            store.paused -> "已暂停守护" to theme.inkSoft
-            store.locked -> "答题中" to theme.accent
-            else -> "守护中" to theme.success
+        val low = left * 5 < limit
+        note.visibility = if (store.paused) View.GONE else View.VISIBLE
+        // 每秒刷新，分钟数没变时不重新排版
+        val noteKey = "${(left + 59) / 60}|$low"
+        if (note.tag != noteKey) {
+            note.tag = noteKey
+            updateNote(left, low)
         }
-        statusChip.text = label
-        statusChip.background = pill(this, color)
-        val s = store.settings
-        summary.text = "每次可看 ${s.watchMinutes} 分钟，到时间后答对 ${s.questionCount} 道题继续看 · " +
-            if (s.countMode.name == "ALL") "所有画面都计时" else "只在 ${s.apps.size} 个指定 App 里计时"
-        pauseButton.setEmojiText(if (store.paused) "▶️  恢复守护" else "⏸️  暂停守护")
+        if (low && !store.paused && ticks % 4 == 0) shakeNote()
+        lockAlert.visibility = if (Permissions.status(this).allGranted) View.GONE else View.VISIBLE
         // 统计和贴纸要读文件，不必每秒都读
-        if (ticks++ % 5 == 0) {
-            val now = System.currentTimeMillis()
-            val rewards = store.rewards()
-            val answered = store.daily()[DailyStats.dayKey(now)]?.answered ?: 0
-            stickerCount.text = "${rewards.stickers.size}/${StickerCatalog.total}"
-            studyToday.text = if (answered > 0) "今天已答 $answered 道题，真棒" else "今天还没有学习哦"
-            val earned = rewards.earnedOn(DailyStats.dayKey(now))
-            studyHint.text = "答对 ${s.studyQuestionCount} 道题，抽一张贴纸" + when {
-                store.paused || s.rewardMinutesPerRound == 0 -> ""
-                earned >= s.rewardDailyCapMinutes -> "（今天的加时已攒满）"
-                else -> "，还能多看 ${s.rewardMinutesPerRound} 分钟"
-            }
-        }
-        val p = Permissions.status(this)
-        setupButton.visibility = if (p.allGranted) View.GONE else View.VISIBLE
-        perms.setEmojiText(if (p.allGranted) "v${BuildConfig.VERSION_NAME}" else
-            "权限：悬浮窗 ${mark(p.overlay)}   录音 ${mark(p.record)}   " +
-            "无障碍 ${mark(p.accessibility)}   使用情况 ${mark(p.usage)}   v${BuildConfig.VERSION_NAME}")
+        if (ticks++ % 5 != 0) return
+        refreshStudy()
     }
 
-    private fun mark(ok: Boolean) = if (ok) "✅" else "⚠️"
+    private fun updateNote(left: Int, low: Boolean) {
+        if (left == 0) {
+            noteTop.text = ""; noteUnit.text = ""
+            noteNum.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 28f); noteNum.text = "时间到啦"
+        } else {
+            noteTop.text = "还能看"; noteUnit.text = "分钟"
+            noteNum.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 40f); noteNum.text = "${(left + 59) / 60}"
+        }
+        noteNum.setTextColor(if (low) theme.error else theme.accentDark)
+    }
 
-    /** 暂停/恢复守护需要家长验证：扫码由手机端切换，或（设置允许时）电视上输密码。 */
-    private fun askParent() {
+    private fun refreshStudy() {
         val store = app.store
-        pausedWhenGateOpened = store.paused
-        val title = if (store.paused) "恢复守护" else "暂停守护"
-        val g = ParentGate(this, theme, title, if (store.paused) "resume" else "pause") { pinVerified ->
-            closeGate()
-            if (pinVerified) {
-                store.paused = !store.paused
-                if (store.paused && store.locked) app.lock.unlock()
-                refresh()
+        val s = store.settings
+        val today = DailyStats.dayKey(System.currentTimeMillis())
+        val rewards = store.rewards()
+        showStars(store.daily()[today]?.studyRounds ?: 0)
+
+        val minutes = RewardRules.nextMinutes(rewards.earnedOn(today), s.rewardMinutesPerRound, s.rewardDailyCapMinutes)
+        val canEarn = !store.paused && minutes > 0
+        studyTile.setSub("答对 ${s.studyQuestionCount} 题 · 抽贴纸" + if (canEarn) " · 多看 $minutes 分钟" else "")
+        lines[studyTile] = "答对 ${s.studyQuestionCount} 道题，就能抽一张贴纸" + if (canEarn) "，还能多看 $minutes 分钟！" else "！"
+
+        val latest = rewards.stickers.maxByOrNull { it.value.first }?.key
+        stickerTile.setIcon(latest ?: "1f31f", dim = latest == null)
+        stickerTile.setSub(if (latest == null) "还没有贴纸" else "已收集 ${rewards.stickers.size} / ${StickerCatalog.total}")
+        lines[stickerTile] = if (latest == null) "还没有贴纸呢，先去学习抽一张吧！" else "看看你收集的 ${rewards.stickers.size} 张贴纸！"
+        lines[lock] = "这里是给爸爸妈妈用的哦"
+    }
+
+    /** 今天的星星印章：至少 3 个，新得的星星像盖章一样落下。 */
+    private fun showStars(count: Int) {
+        val slots = maxOf(3, minOf(count, 8))
+        if (stamps.childCount != slots) {
+            stamps.removeAllViews()
+            repeat(slots) { i ->
+                val ring = FrameLayout(this).apply {
+                    background = GradientDrawable().apply {
+                        shape = GradientDrawable.OVAL
+                        setStroke(dp(3), STAMP_RING, dp(6f), dp(5f))
+                    }
+                    rotation = if (i % 2 == 0) -10f else 8f
+                }
+                ring.addView(ImageView(this).apply { setImageBitmap(Emoji.bitmap(context, "2b50")) },
+                    FrameLayout.LayoutParams(dp(30), dp(30), Gravity.CENTER))
+                stamps.addView(ring, LinearLayout.LayoutParams(dp(46), dp(46)).apply { leftMargin = dp(8) })
             }
         }
-        gate = g
-        root.addView(g, FrameLayout.LayoutParams(-1, -1))
-    }
-
-    private fun closeGate() {
-        gate?.let { root.removeView(it) }
-        gate = null
-        pauseButton.requestFocus()
-    }
-
-    private fun entrance(content: LinearLayout) {
-        for (i in 0 until content.childCount) {
-            val v = content.getChildAt(i)
-            v.alpha = 0f; v.translationY = dp(40f)
-            v.animate().alpha(1f).translationY(0f).setStartDelay(i * 120L).setDuration(500)
-                .setInterpolator(OvershootInterpolator(1.1f)).start()
+        val grey = ColorMatrixColorFilter(ColorMatrix().apply { setSaturation(0f) })
+        for (i in 0 until slots) {
+            val ring = stamps.getChildAt(i) as FrameLayout
+            val star = ring.getChildAt(0) as ImageView
+            val on = i < count
+            star.colorFilter = if (on) null else grey
+            star.alpha = if (on) 1f else 0.35f
+            // 第一次显示时不盖，之后新得的那几颗才盖下来
+            if (on && shownStars >= 0 && i >= shownStars) {
+                val delay = 500L + (i - shownStars) * 260L
+                star.scaleX = 2f; star.scaleY = 2f; star.alpha = 0f; star.rotation = -30f
+                star.animate().scaleX(1f).scaleY(1f).alpha(1f).rotation(0f).setStartDelay(delay)
+                    .setDuration(320).setInterpolator(DecelerateInterpolator(2f)).withEndAction {
+                        ring.scaleX = 1.18f; ring.scaleY = 1.18f
+                        ring.animate().scaleX(1f).scaleY(1f).setDuration(260).setInterpolator(OvershootInterpolator(3f)).start()
+                    }.start()
+            }
         }
+        shownStars = count
     }
 
-    private fun text(s: String, sp: Float, color: Int, bold: Boolean = false) = themedText(s, sp, color, bold)
+    private fun shakeNote() {
+        ObjectAnimator.ofFloat(note, View.ROTATION, 4f, -3f, 8f, -1f, 4f).setDuration(600).start()
+    }
 
-    private fun button(label: String, onClick: () -> Unit) = focusButton(theme, label, compact = true, onClick = onClick)
-
-    private fun dp(v: Int) = (this as Context).dp(v)
-    private fun dp(v: Float) = (this as Context).dp(v)
-}
-
-/** 剩余时间条：随剩余比例缩短，不足 20% 变为强调色。 */
-class TimeBar(context: Context, private val theme: ThemeSpec) : View(context) {
-    private val track = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = theme.starEmpty }
-    private val fill = Paint(Paint.ANTI_ALIAS_FLAG)
-    private var shown = -1f
-
-    fun set(leftSeconds: Int, totalSeconds: Int) {
-        val target = leftSeconds.toFloat() / totalSeconds.coerceAtLeast(1)
-        if (shown < 0) shown = target
-        android.animation.ValueAnimator.ofFloat(shown, target).apply {
-            duration = 600
-            addUpdateListener { shown = it.animatedValue as Float; invalidate() }
+    /** 待机：吉祥物慢慢歪头。 */
+    private fun startIdle() {
+        wiggle?.cancel()
+        wiggle = ObjectAnimator.ofFloat(peek, View.ROTATION, -8f, -2f).apply {
+            duration = 1800
+            repeatMode = ValueAnimator.REVERSE
+            repeatCount = ValueAnimator.INFINITE
+            interpolator = AccelerateDecelerateInterpolator()
             start()
         }
     }
 
-    override fun onDraw(canvas: Canvas) {
-        val r = height / 2f
-        canvas.drawRoundRect(RectF(0f, 0f, width.toFloat(), height.toFloat()), r, r, track)
-        fill.color = if (shown < 0.2f) theme.accent else theme.success
-        val w = width * shown.coerceIn(0f, 1f)
-        if (w > 0f) canvas.drawRoundRect(RectF(0f, 0f, maxOf(w, height.toFloat()), height.toFloat()), r, r, fill)
+    /** 第一次进入：吉祥物探出头，荧光笔划出标题，贴纸一张张拍到纸上，便利贴掉下来。 */
+    private fun entrance() {
+        peek.alpha = 0f; peek.translationY = dp(60f); peek.rotation = -30f
+        peek.animate().alpha(1f).translationY(0f).rotation(-8f).setDuration(560)
+            .setInterpolator(OvershootInterpolator(1.8f)).withEndAction { startIdle() }.start()
+        title.alpha = 0f; title.translationY = dp(10f)
+        title.animate().alpha(1f).translationY(0f).setStartDelay(150).setDuration(360).start()
+        band.progress = 0f
+        ValueAnimator.ofFloat(0f, 1f).apply {
+            startDelay = 320; duration = 460; interpolator = DecelerateInterpolator()
+            addUpdateListener { band.progress = it.animatedValue as Float }
+            start()
+        }
+        listOf(studyTile, stickerTile).forEachIndexed { i, t ->
+            val tilt = t.rotation
+            t.alpha = 0f; t.scaleX = 1.35f; t.scaleY = 1.35f; t.rotation = tilt + 12f
+            t.animate().alpha(1f).scaleX(1f).scaleY(1f).rotation(tilt).setStartDelay(520L + i * 170L)
+                .setDuration(420).setInterpolator(OvershootInterpolator(1.6f)).start()
+        }
+        note.alpha = 0f; note.translationY = -dp(170f); note.rotation = 22f
+        note.animate().alpha(1f).translationY(0f).rotation(4f).setStartDelay(820).setDuration(520)
+            .setInterpolator(OvershootInterpolator(1.4f)).start()
+        for (v in listOf<View>(stampRow, lock)) {
+            val target = v.alpha
+            v.alpha = 0f
+            v.animate().alpha(target).setStartDelay(1000).setDuration(300).start()
+        }
     }
+
+    private companion object {
+        const val ENTRANCE_MS = 1300L
+        val NOTE_YELLOW = Color.rgb(0xFF, 0xE9, 0x8A)
+        val NOTE_INK = Color.rgb(0x6B, 0x53, 0x20)
+        val STAMP_RING = Color.rgb(0xD9, 0xB9, 0x8A)
+    }
+
+    private fun dp(v: Float) = (this as Context).dp(v)
+    private fun dp(v: Int) = (this as Context).dp(v)
 }

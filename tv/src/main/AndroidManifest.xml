@@ -49,6 +49,10 @@
             android:exported="false" />
 
         <activity
+            android:name=".ui.ParentActivity"
+            android:exported="false" />
+
+        <activity
             android:name=".ui.SetupActivity"
             android:exported="false" />
 

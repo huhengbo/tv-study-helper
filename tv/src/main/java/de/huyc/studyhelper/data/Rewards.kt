@@ -67,6 +67,10 @@ data class Draw(val code: String, val rarity: Rarity, val isNew: Boolean)
 data class RoundReward(val state: RewardState, val minutes: Int, val draw: Draw, val capReached: Boolean)
 
 object RewardRules {
+    /** 今天已得 [earned] 分钟时，下一轮能得的加时：每轮 [perRound] 分钟，补到 [cap] 为止。首页提示也用它，和实际发放一致。 */
+    fun nextMinutes(earned: Int, perRound: Int, cap: Int): Int =
+        perRound.coerceAtLeast(0).coerceAtMost((cap - earned).coerceAtLeast(0))
+
     /**
      * 通过一轮答题的奖励。每轮抽一张贴纸；[canEarnTime] 时再给加时：
      * 每轮 [perRound] 分钟，当天累计不超过 [cap] 分钟（0 表示不给）。
@@ -82,7 +86,7 @@ object RewardRules {
     ): RoundReward {
         val today = DailyStats.dayKey(time, zone)
         val earned = state.earnedOn(today)
-        val minutes = if (canEarnTime) perRound.coerceAtLeast(0).coerceAtMost((cap - earned).coerceAtLeast(0)) else 0
+        val minutes = if (canEarnTime) nextMinutes(earned, perRound, cap) else 0
         val draw = draw(state, time, random)
         val next = state.copy(
             stickers = state.stickers + (draw.code to StickerEntry((state.stickers[draw.code]?.count ?: 0) + 1, state.stickers[draw.code]?.first ?: time)),

@@ -11,3 +11,6 @@ local.properties
 secrets/
 *.keystore
 *.jks
+
+# 设计方向预览页（本地生成，不进版本库）
+design-previews/
