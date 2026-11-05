@@ -155,7 +155,7 @@ scripts/                   setup_tv.sh 首次安装与授权、check.sh 全部�
 - 来源：内置（`assets/packs/`，随程序升级）、分享题库、文件导入只读，可停用单题或「复制一份」再改；家长自建的可以改。
 - 许可：建议分享的题库使用 [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/deed.zh-hans)，写在 `license` 字段里。不要上传受版权保护的教材原文。
 
-分享题库目录 `index.json`：`{"format": "studyhelper-index", "packs": [{"id", "name", "icon", "version", "description", "count", "tags", "url"}]}`，`url` 可为相对路径。默认目录地址在 `data/PackIndex.kt` 的 `DEFAULT_URL`（分享仓库建好后填入），手机「设置」页也可改。
+分享题库目录 `index.json`：`{"format": "studyhelper-index", "packs": [{"id", "name", "icon", "version", "description", "count", "tags", "url"}]}`，`url` 可为相对路径。默认连接公共题库仓库 [study-helper-packs](https://github.com/huhengbo/study-helper-packs)，地址在 `data/PackIndex.kt` 的 `DEFAULT_URL`，手机「设置」页也可改。
 
 从旧版本升级时，原来的 `questions.json` 拆成内置包和「我的题目」，原文件改名为 `questions.legacy.json` 保留。
 

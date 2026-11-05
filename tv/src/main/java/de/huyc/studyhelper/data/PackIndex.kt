@@ -14,8 +14,8 @@ import java.net.URL
  * url 可以是相对 index.json 的路径。
  */
 object PackIndex {
-    /** 默认目录地址：分享题库仓库建好后填入（国内建议用 jsDelivr 镜像）。为空时手机端提示「即将开放」。 */
-    const val DEFAULT_URL = ""
+    /** 默认目录地址：公共题库仓库 huhengbo/study-helper-packs（jsDelivr 镜像，国内可访问）。为空时手机端提示「即将开放」。 */
+    const val DEFAULT_URL = "https://cdn.jsdelivr.net/gh/huhengbo/study-helper-packs@main/index.json"
     private const val MAX_BYTES = 2 * 1024 * 1024
 
     class Entry(val id: String, val name: String, val icon: String, val description: String,
