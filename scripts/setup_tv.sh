@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# 一次性安装并授权「学习小助手」。用法：scripts/setup_tv.sh <电视IP> [apk路径]
+# 用电脑一次性安装并授权「学习小助手」（备用方式；应用本身已带「开启必要权限」引导，见 README）。
+# 用法：scripts/setup_tv.sh <电视IP> [apk路径]
 # 电视需先打开：设置 → 账号与安全 → ADB 调试（以及「安装未知来源应用」）。
 set -euo pipefail
 

@@ -61,5 +61,7 @@ dependencies {
     implementation("com.google.zxing:core:3.5.3")
     implementation("com.belerweb:pinyin4j:2.5.1")
     testImplementation("junit:junit:4.13.2")
+    // 仅用来对照 adb 公钥格式（core/AdbPublicKeyTest），运行时不依赖
+    testImplementation("dev.mobile:dadb:1.2.10")
     testImplementation("org.json:json:20240303")
 }

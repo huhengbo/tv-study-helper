@@ -1,17 +1,14 @@
 package de.huyc.studyhelper.web
 
-import android.app.AppOpsManager
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Canvas
-import android.os.Process
-import android.provider.Settings
 import android.util.Log
 import de.huyc.studyhelper.App
 import de.huyc.studyhelper.BuildConfig
 import de.huyc.studyhelper.core.ForegroundTracker
+import de.huyc.studyhelper.core.Permissions
 import de.huyc.studyhelper.data.AnswerLog
 import de.huyc.studyhelper.data.PackFormat
 import de.huyc.studyhelper.data.PackIndex
@@ -174,17 +171,10 @@ class AdminServer(private val context: Context, private val store: Store) : Nano
             .put("version", BuildConfig.VERSION_NAME)
             .put("ttsCached", app.speaker.cachedCount())
             .put("themes", JSONArray(Themes.all.map { JSONObject().put("id", it.id).put("name", it.name) }))
-            .put("permissions", JSONObject()
-                .put("overlay", Settings.canDrawOverlays(context))
-                .put("record", context.checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED)
-                .put("accessibility", ForegroundTracker.accessibilityActive)
-                .put("usage", hasUsageAccess()))
-    }
-
-    private fun hasUsageAccess(): Boolean {
-        val ops = context.getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
-        @Suppress("DEPRECATION")
-        return ops.checkOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, Process.myUid(), context.packageName) == AppOpsManager.MODE_ALLOWED
+            .put("permissions", Permissions.status(context).let { p ->
+                JSONObject().put("overlay", p.overlay).put("record", p.record)
+                    .put("accessibility", p.accessibility).put("usage", p.usage)
+            })
     }
 
     // ---- 应用列表 ----

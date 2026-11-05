@@ -1,10 +1,8 @@
 package de.huyc.studyhelper.ui
 
 import android.app.Activity
-import android.app.AppOpsManager
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
@@ -12,9 +10,6 @@ import android.graphics.RectF
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.os.Process
-import android.provider.Settings
-import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
 import android.view.animation.OvershootInterpolator
@@ -24,7 +19,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import de.huyc.studyhelper.App
 import de.huyc.studyhelper.BuildConfig
-import de.huyc.studyhelper.core.ForegroundTracker
+import de.huyc.studyhelper.core.Permissions
 import de.huyc.studyhelper.core.GuardService
 import de.huyc.studyhelper.diag.VoiceDiagActivity
 import de.huyc.studyhelper.web.AdminServer
@@ -41,6 +36,8 @@ class MainActivity : Activity() {
     private lateinit var statusChip: TextView
     private lateinit var summary: TextView
     private lateinit var pauseButton: TextView
+    private lateinit var setupButton: TextView
+    private lateinit var setupRow: LinearLayout
     private lateinit var perms: TextView
     private lateinit var qr: ImageView
     private lateinit var url: TextView
@@ -58,6 +55,10 @@ class MainActivity : Activity() {
         root.addView(FloatingBackground(this, theme), FrameLayout.LayoutParams(-1, -1))
         root.addView(buildContent(), FrameLayout.LayoutParams(-1, -1))
         setContentView(root)
+        if (savedInstanceState == null && !app.store.setupPrompted && !Permissions.status(this).allGranted) {
+            app.store.setupPrompted = true
+            startActivity(Intent(this, SetupActivity::class.java))
+        }
     }
 
     private fun buildContent(): View {
@@ -108,6 +109,13 @@ class MainActivity : Activity() {
         buttons.addView(pauseButton)
         buttons.addView(button("🎤  语音诊断") { startActivity(Intent(this, VoiceDiagActivity::class.java)) })
         left.addView(buttons, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(16); leftMargin = -dp(8) })
+        // 四个按钮一行放不下，开启权限单独一行，权限齐全时隐藏
+        setupButton = button("🔧  开启权限") { startActivity(Intent(this, SetupActivity::class.java)) }
+        setupRow = LinearLayout(this).apply {
+            clipChildren = false; clipToPadding = false; setPadding(dp(8), 0, dp(8), dp(10))
+            addView(setupButton)
+        }
+        left.addView(setupRow, LinearLayout.LayoutParams(-2, -2).apply { leftMargin = -dp(8) })
         perms = text("", 14f, theme.inkSoft)
         left.addView(perms, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(4); leftMargin = dp(6) })
         content.addView(left, LinearLayout.LayoutParams(0, -2, 1f))
@@ -164,17 +172,13 @@ class MainActivity : Activity() {
         summary.text = "每次可看 ${s.watchMinutes} 分钟\n到时间后答对 ${s.questionCount} 道题继续看\n" +
             if (s.countMode.name == "ALL") "所有画面都计时" else "只在 ${s.apps.size} 个指定 App 里计时"
         pauseButton.setEmojiText(if (store.paused) "▶️  恢复守护" else "⏸️  暂停守护")
-        perms.setEmojiText("权限：悬浮窗 ${mark(Settings.canDrawOverlays(this))}   录音 ${mark(checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED)}   " +
-            "无障碍 ${mark(ForegroundTracker.accessibilityActive)}   使用情况 ${mark(hasUsageAccess())}   v${BuildConfig.VERSION_NAME}")
+        val p = Permissions.status(this)
+        setupRow.visibility = if (p.allGranted) View.GONE else View.VISIBLE
+        perms.setEmojiText("权限：悬浮窗 ${mark(p.overlay)}   录音 ${mark(p.record)}   " +
+            "无障碍 ${mark(p.accessibility)}   使用情况 ${mark(p.usage)}   v${BuildConfig.VERSION_NAME}")
     }
 
     private fun mark(ok: Boolean) = if (ok) "✅" else "⚠️"
-
-    private fun hasUsageAccess(): Boolean {
-        val ops = getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
-        @Suppress("DEPRECATION")
-        return ops.checkOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, Process.myUid(), packageName) == AppOpsManager.MODE_ALLOWED
-    }
 
     /** 暂停/恢复守护需要家长验证：扫码由手机端切换，或（设置允许时）电视上输密码。 */
     private fun askParent() {
@@ -208,33 +212,9 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun text(s: String, sp: Float, color: Int, bold: Boolean = false) = TextView(this).apply {
-        text = s; setTextSize(TypedValue.COMPLEX_UNIT_SP, sp); setTextColor(color)
-        if (bold) typeface = BOLD
-    }
+    private fun text(s: String, sp: Float, color: Int, bold: Boolean = false) = themedText(s, sp, color, bold)
 
-    private fun button(label: String, onClick: () -> Unit) = TextView(this).apply {
-        typeface = BOLD
-        setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f)
-        maxLines = 1
-        setEmojiText(label)
-        gravity = Gravity.CENTER
-        isFocusable = true
-        setPadding(dp(22), dp(13), dp(22), dp(13))
-        val normal = pill(context, theme.card)
-        val focused = pill(context, theme.accent)
-        background = normal
-        elevation = dp(4f)
-        setTextColor(theme.ink)
-        setOnFocusChangeListener { v, has ->
-            v.background = if (has) focused else normal
-            (v as TextView).setTextColor(if (has) Color.WHITE else theme.ink)
-            v.animate().scaleX(if (has) 1.08f else 1f).scaleY(if (has) 1.08f else 1f)
-                .setInterpolator(OvershootInterpolator(2.5f)).setDuration(220).start()
-        }
-        setOnClickListener { onClick() }
-        layoutParams = LinearLayout.LayoutParams(-2, -2).apply { rightMargin = dp(16) }
-    }
+    private fun button(label: String, onClick: () -> Unit) = focusButton(theme, label, onClick)
 
     private fun dp(v: Int) = (this as Context).dp(v)
     private fun dp(v: Float) = (this as Context).dp(v)

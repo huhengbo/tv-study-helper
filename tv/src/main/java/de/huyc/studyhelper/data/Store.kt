@@ -192,6 +192,11 @@ class Store(context: Context) {
         get() = prefs.getBoolean("paused", false)
         set(v) { prefs.edit().putBoolean("paused", v).apply(); notifyChanged() }
 
+    /** 首次启动缺权限时已自动打开过授权页；之后只在主页提供入口，不再自动弹出。 */
+    var setupPrompted: Boolean
+        get() = prefs.getBoolean("setupPrompted", false)
+        set(v) = prefs.edit().putBoolean("setupPrompted", v).apply()
+
     /** 家长从手机额外加的时长（秒），解锁或下一轮开始时清零。 */
     var bonusSeconds: Int
         get() = prefs.getInt("bonus", 0)

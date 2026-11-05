@@ -64,15 +64,19 @@
 
 ## 安装
 
-1. 电视上打开：设置 → 账号与安全 → ADB 调试、允许安装未知来源应用。
-2. 从 [Releases](https://github.com/huhengbo/tv-study-helper/releases) 下载 `tv-study-helper-x.y.z.apk`（或自己编译，见「开发」）。
-3. 电脑与电视在同一局域网，装好 [adb](https://developer.android.com/tools/releases/platform-tools) 后执行：
+1. 从 [Releases](https://github.com/huhengbo/tv-study-helper/releases) 下载 `tv-study-helper-x.y.z.apk`（或自己编译，见「开发」），用 U 盘或电视上的文件管理器安装（需允许「安装未知来源应用」）。
+2. 电视上打开：设置 → 账号与安全 → ADB 调试，把开关打开。
+3. 打开「学习小助手」，会自动进入「开启必要权限」页：点「开始授权」，电视弹出「允许 USB 调试吗？」时用方向键移到「确定」再按确认键。应用会自己开启录音、悬浮窗、使用情况访问权限和无障碍服务（保留系统已有的服务，如小爱同学），不需要电脑。完成后建议把 ADB 调试关掉。
+
+   小米电视的设置里没有悬浮窗、无障碍、使用情况的页面，所以用这种方式授权。电脑上正连着这台电视的 adb 时请先断开，否则电视不会响应应用的连接。以后缺权限时，首页会出现「开启权限」按钮，随时可以重新进入。
+
+   这种方式不可用时（别的机型不支持网络 adb 等），也可以在电脑上装好 [adb](https://developer.android.com/tools/releases/platform-tools)，与电视同一局域网后执行：
 
    ```bash
    scripts/setup_tv.sh <电视IP> tv-study-helper-x.y.z.apk
    ```
 
-   脚本会安装 APK 并授予录音、悬浮窗、使用情况访问权限，开启无障碍服务（保留系统已有的服务）。这些权限在电视上很难手动打开，所以首次安装需要电脑；以后的升级在手机管理页完成，不再需要电脑。
+   脚本安装 APK 并完成同样的授权。
 4. 电视上打开「学习小助手」，手机扫码进入管理页，默认家长密码 `1234`，请立即修改。
 5. 在手机「应用」页勾选要管控的 App，在「语音」页填写百度智能云或火山引擎的密钥（不填也能用选择题作答）。
 
@@ -96,7 +100,7 @@
 
 ```
 tv/src/main/java/de/huyc/studyhelper/
-├── core/    守护服务（计时、锁定）、无障碍服务、开机启动、暂停其他 App 播放
+├── core/    守护服务（计时、锁定）、无障碍服务、开机启动、暂停其他 App 播放、应用内授权（本机 adb 客户端）
 ├── quiz/    出题、判分（拼音/中文数字/英文归一化）、答题进度规则
 ├── voice/   语音键识别、遥控器录音、百度/火山 ASR 与 TTS、朗读缓存、HTTP 与证书兼容
 ├── update/  检查新版本、镜像选择、下载核对与安装
@@ -106,7 +110,7 @@ tv/src/main/java/de/huyc/studyhelper/
 tv/src/main/assets/web/    手机管理网页（原生 HTML/CSS/JS）
 tv/src/main/assets/packs/  内置题库包（与分享题库同一格式）
 tv/src/main/assets/emoji/  Noto 表情图片（Apache 2.0），电视系统字体没有彩色表情
-scripts/                   setup_tv.sh 首次安装与授权、check.sh 全部检查、version.sh 版本号与升级清单
+scripts/                   setup_tv.sh 用电脑安装与授权（备用）、check.sh 全部检查、version.sh 版本号与升级清单
 ```
 
 ## 题目模型与扩展
@@ -204,7 +208,7 @@ keyPassword=…
 
 - 只在小米电视 4A 上验证过，见开头说明。
 - 语音识别依赖第三方在线服务，需要家长自己申请密钥；没网或没配置时只能用选择题。
-- 首次安装需要电脑和 adb 授权（悬浮窗、无障碍等权限在电视上很难手动打开）。
+- 首次安装需要在电视上打开「ADB 调试」，应用通过本机 adb 给自己授权；只在小米电视 4A 上验证过，不支持网络 adb 的机型需要用电脑运行 `scripts/setup_tv.sh`。
 - 系统没有 root 权限，更新时需要家长在电视上点一下「安装」，无法静默升级。
 
 ## 参与贡献
