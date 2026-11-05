@@ -120,6 +120,7 @@ tv/src/main/java/de/huyc/studyhelper/
 tv/src/main/java/com/k2fsa/sherpa/onnx/  sherpa-onnx 的 Kotlin 接口（原样摘录，JNI 按类名查找）
 tv/src/main/assets/web/    手机管理网页（原生 HTML/CSS/JS）
 tv/src/main/assets/packs/  内置题库包（与分享题库同一格式）
+packs-repo/                官方分享题库仓库（git submodule，huhengbo/study-helper-packs），题库包、校验和生成脚本在那边维护；克隆后用 `git submodule update --init` 取回
 tv/src/main/assets/emoji/  Noto 表情图片（Apache 2.0），电视系统字体没有彩色表情
 scripts/                   setup_tv.sh 用电脑安装与授权（备用）、check.sh 全部检查、version.sh 版本号与升级清单、offline_asr_pack.sh 生成离线语音包
 ```

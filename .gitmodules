@@ -1,0 +1,3 @@
+[submodule "packs-repo"]
+	path = packs-repo
+	url = https://github.com/huhengbo/study-helper-packs.git
