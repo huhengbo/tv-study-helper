@@ -6,6 +6,7 @@ import android.util.Log
 import de.huyc.studyhelper.voice.Http
 import java.io.File
 import java.security.MessageDigest
+import java.util.Collections
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 
@@ -25,7 +26,8 @@ object SpriteCache {
     const val MAX_PIXELS = 4_200_000
 
     private val io = Executors.newSingleThreadExecutor { Thread(it, "sprite-cache").apply { isDaemon = true } }
-    private val inFlight = ConcurrentHashMap.newKeySet<String>()
+    // ConcurrentHashMap.newKeySet 要 API 24，电视是 Android 6（API 23）
+    private val inFlight: MutableSet<String> = Collections.newSetFromMap(ConcurrentHashMap<String, Boolean>())
 
     fun file(context: Context, sheet: SpriteSheet) = File(dir(context), sheet.cacheKey + EXT)
 
