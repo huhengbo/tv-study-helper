@@ -60,13 +60,14 @@ class QuizView(
 
     private val settings = store.settings
     private val theme = Themes.get(settings.theme)
-    private val session = QuizSession(items, settings.questionCount, settings.wrongResets)
+    private val session = QuizSession(items, settings.questionCount, settings.wrongResets, settings.reviewWrong)
     private val asr: AsrProvider? = VoiceProviders.asr(context, settings.voice)
     private val tts = if (settings.voice.ttsEnabled) VoiceProviders.tts(context, settings.voice) else null
     private val recorder = VoiceRecorder(context)
     /** 正在进行的边录边识别，只在主线程读写。 */
     private var liveAsr: AsrSession? = null
     private val worker = Executors.newSingleThreadExecutor()
+    private val sfx = Sfx(settings.soundEffects)
     private val main = Handler(Looper.getMainLooper())
     private var phase = Phase.INTRO
     private var released = false
@@ -220,6 +221,7 @@ class QuizView(
         cancelLiveAsr()
         recorder.stop()
         speaker.stop()
+        sfx.release()
         mascotBob.cancel()
         main.removeCallbacksAndMessages(null)
         worker.shutdownNow()
@@ -408,13 +410,20 @@ class QuizView(
         }
     }
 
+    /** 朗读排在音效之后，避免两个声音叠在一起。 */
+    private fun speakAfterSfx(text: String, gapMs: Long = SFX_MS) {
+        if (!settings.soundEffects) { speaker.speak(tts, text); return }
+        main.postDelayed({ if (!released) speaker.speak(tts, text) }, gapMs)
+    }
+
     private fun celebrate(starIndex: Int) {
         phase = Phase.CORRECT
         val praise = Phrases.PRAISE.random()
         setStatus(praise)
         val left = session.required - session.correctCount
         say(if (left > 0) "$praise 还差 $left 道题" else praise)
-        speaker.speak(tts, praise)
+        sfx.play(Sound.CORRECT)
+        speakAfterSfx(praise)
         showBadge(true)
         confetti.burst()
         // 题卡弹一下
@@ -438,7 +447,8 @@ class QuizView(
         setStatus("正确答案是「$answer」" + if (reset) "，要重新开始哦" else "", true)
         say(if (item.mode == AnswerMode.VOICE && heard.isNotBlank()) "我听到的是「${heard.take(12)}」" else "不对哦，记住答案")
         // 拼音答案带声调符号，朗读会读错，这类题只显示不朗读
-        if (item.question.subject != Subject.PINYIN) speaker.speak(tts, "不对哦，正确答案是$answer")
+        sfx.play(Sound.WRONG)
+        if (item.question.subject != Subject.PINYIN) speakAfterSfx("不对哦，正确答案是$answer")
         showBadge(false)
         if (item.mode == AnswerMode.CHOICE) highlightAnswer(item.correctChoice)
         ObjectAnimator.ofFloat(card, "translationX", 0f, -28f, 28f, -18f, 18f, -8f, 8f, 0f).setDuration(480).start()
@@ -483,6 +493,10 @@ class QuizView(
 
     private fun allDone() {
         phase = Phase.DONE
+        if (!preview) {
+            store.recordRound(study = false)
+            store.adaptMath()
+        }
         main.postDelayed({
             if (released) return@postDelayed
             prompt.text = ""
@@ -493,7 +507,8 @@ class QuizView(
             voiceRow.visibility = VISIBLE
             choiceRow.visibility = GONE
             mic.visibility = INVISIBLE
-            speaker.speak(tts, Phrases.ALL_DONE)
+            sfx.play(Sound.DONE)
+            speakAfterSfx(Phrases.ALL_DONE, DONE_SFX_MS)
             confetti.burst(110)
             for (i in 0 until stars.childCount) {
                 stars.getChildAt(i).animate().translationY(-context.dp(14f)).setStartDelay(i * 90L).setDuration(180)
@@ -584,5 +599,8 @@ class QuizView(
         private const val READY_TEXT = "按住遥控器上的语音键，说出答案"
         /** 答错后公布答案的停留时间。 */
         private const val REVEAL_MS = 4000L
+        /** 答对、答错音效的长度，朗读等音效播完再开口。 */
+        private const val SFX_MS = 400L
+        private const val DONE_SFX_MS = 900L
     }
 }

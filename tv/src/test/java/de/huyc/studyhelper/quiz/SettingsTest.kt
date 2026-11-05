@@ -1,5 +1,6 @@
 package de.huyc.studyhelper.quiz
 
+import de.huyc.studyhelper.data.MathConfig
 import de.huyc.studyhelper.data.Settings
 import de.huyc.studyhelper.data.VoiceConfig
 import org.json.JSONObject
@@ -41,5 +42,19 @@ class MigrationTest {
         val q = de.huyc.studyhelper.data.Question.fromJson(org.json.JSONObject("""{"id":"a","type":"HANZI","prompt":"p","display":"山","answers":["山"]}"""))
         assertEquals(de.huyc.studyhelper.data.Subject.HANZI, q.subject)
         assertEquals(de.huyc.studyhelper.data.AnswerMode.VOICE, q.mode)
+    }
+
+    @Test fun settingsFromBeforeLearningFeaturesGetDefaults() {
+        val old = JSONObject().put("watchMinutes", 40).put("math", JSONObject().put("max", 50))
+        val s = Settings.fromJson(old)
+        assertEquals(true, s.reviewWrong)
+        assertEquals(true, s.soundEffects)
+        assertEquals(false, s.math.adaptive)
+        assertEquals(50, s.math.max)
+    }
+
+    @Test fun learningSettingsRoundTrip() {
+        val s = Settings(reviewWrong = false, soundEffects = false, math = MathConfig(adaptive = true))
+        assertEquals(s, Settings.fromJson(JSONObject(s.toJson().toString())))
     }
 }

@@ -111,9 +111,11 @@ data class MathConfig(
     val sub: Boolean = true,
     val max: Int = 20,
     val mode: AnswerMode = AnswerMode.VOICE,
+    /** 按近期正确率在 [AdaptiveMath.MIN_LEVEL, max] 之间自动调整范围，[max] 是上限。 */
+    val adaptive: Boolean = false,
 ) {
     fun toJson(): JSONObject = JSONObject().put("enabled", enabled).put("add", add).put("sub", sub)
-        .put("max", max).put("mode", mode.name)
+        .put("max", max).put("mode", mode.name).put("adaptive", adaptive)
 
     companion object {
         fun fromJson(o: JSONObject?) = if (o == null) MathConfig() else MathConfig(
@@ -122,6 +124,7 @@ data class MathConfig(
             sub = o.optBoolean("sub", true),
             max = o.optInt("max", 20).coerceIn(5, 1000),
             mode = enumOr(o.optString("mode"), AnswerMode.VOICE),
+            adaptive = o.optBoolean("adaptive", false),
         )
     }
 }
@@ -194,6 +197,10 @@ data class Settings(
     val questionCount: Int = 3,
     /** 答错后已答对的题数清零（kidslock 的「连续答对」规则）。 */
     val wrongResets: Boolean = false,
+    /** 近期答错的题更常出现，同一轮里答错的题隔两题再考一次。 */
+    val reviewWrong: Boolean = true,
+    /** 答对、答错、通关的短音效。 */
+    val soundEffects: Boolean = true,
     val autoStart: Boolean = true,
     val pin: String = "1234",
     /** 允许在电视上用方向键输密码（孩子可能看到），默认只能手机扫码验证。 */
@@ -216,6 +223,8 @@ data class Settings(
         .put("watchMinutes", watchMinutes)
         .put("questionCount", questionCount)
         .put("wrongResets", wrongResets)
+        .put("reviewWrong", reviewWrong)
+        .put("soundEffects", soundEffects)
         .put("autoStart", autoStart)
         .put("pin", if (maskSecrets) "" else pin)
         .put("tvPinUnlock", tvPinUnlock)
@@ -235,6 +244,8 @@ data class Settings(
         watchMinutes = o.optInt("watchMinutes", watchMinutes).coerceIn(1, 600),
         questionCount = o.optInt("questionCount", questionCount).coerceIn(1, 20),
         wrongResets = o.optBoolean("wrongResets", wrongResets),
+        reviewWrong = o.optBoolean("reviewWrong", reviewWrong),
+        soundEffects = o.optBoolean("soundEffects", soundEffects),
         autoStart = o.optBoolean("autoStart", autoStart),
         tvPinUnlock = o.optBoolean("tvPinUnlock", tvPinUnlock),
         pin = o.optString("pin", "").trim().takeIf { it.matches(Regex("\\d{4,8}")) } ?: pin,

@@ -105,4 +105,62 @@ class QuizTest {
         val items = QuizMaker(Random(9)).make(settings, emptyList(), 3)
         assertTrue(items.all { it.question.subject == Subject.MATH })
     }
+
+    private fun english(id: String) = Question(id, Subject.ENGLISH, "?", id, listOf(id))
+
+    @Test fun heavierQuestionsComeFirstMoreOften() {
+        val bank = List(10) { english("w$it") }
+        val weight: (Question) -> Double = { if (it.id == "w0") 20.0 else 1.0 }
+        val settings = Settings(subjects = setOf(Subject.ENGLISH), math = MathConfig(enabled = false))
+        val first = (0 until 200).count { seed ->
+            QuizMaker(Random(seed), weight).make(settings, bank, 1).single().question.id == "w0"
+        }
+        // 权重 20 对 9 个权重 1：期望约 69%；普通洗牌只有 10%
+        assertTrue("w0 排第一 $first/200 次", first > 100)
+    }
+
+    @Test fun everyQuestionIsAskedOncePerPass() {
+        val bank = List(6) { english("w$it") }
+        val settings = Settings(subjects = setOf(Subject.ENGLISH))
+        val ids = QuizMaker(Random(1), { if (it.id == "w3") 9.0 else 1.0 }).make(settings, bank, 6).map { it.question.id }
+        assertEquals(bank.map { it.id }.toSet(), ids.toSet())
+    }
+
+    @Test fun pinyinCandidatesFollowWeights() {
+        val bank = TestBank.questions()
+        val settings = Settings(subjects = setOf(Subject.PINYIN))
+        val target = QuizMaker(Random(0)).make(settings, bank, 1).single().question
+        val favored = (0 until 100).count { seed ->
+            QuizMaker(Random(seed), { if (it.key == target.key) 50.0 else 1.0 }).make(settings, bank, 1).single().question.key == target.key
+        }
+        val plain = (0 until 100).count { seed -> QuizMaker(Random(seed)).make(settings, bank, 1).single().question.key == target.key }
+        assertTrue("加权 $favored 次 > 不加权 $plain 次", favored > plain)
+    }
+
+    @Test fun wrongQuestionIsRetriedAfterTwoOthers() {
+        val list = items(8)
+        val s = QuizSession(list, required = 5, wrongResets = false, retryWrong = true)
+        val missed = s.current
+        s.answer(false)
+        s.answer(true) // 第 2 题
+        s.answer(true) // 第 3 题
+        assertEquals(missed, s.current) // 第 4 题回炉
+    }
+
+    @Test fun wrongQuestionIsRetriedOnlyOnce() {
+        val s = QuizSession(items(8), required = 6, wrongResets = false, retryWrong = true)
+        val missed = s.current
+        s.answer(false); s.answer(true); s.answer(true)
+        assertEquals(missed, s.current)
+        s.answer(false) // 回炉又答错
+        val rest = List(4) { s.current.also { s.answer(true) } }
+        assertTrue(rest.none { it == missed })
+    }
+
+    @Test fun noRetryWhenDisabled() {
+        val s = QuizSession(items(8), required = 5, wrongResets = false, retryWrong = false)
+        val missed = s.current
+        s.answer(false)
+        repeat(4) { assertTrue(s.current != missed); s.answer(true) }
+    }
 }

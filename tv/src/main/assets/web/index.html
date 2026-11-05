@@ -205,6 +205,8 @@
         <div class="stepper-row"><span>需要答对</span><div class="stepper" data-key="questionCount" data-step="1" data-min="1" data-max="10"><button>−</button><b></b><button>＋</button></div><span class="unit">道题</span></div>
         <div class="stepper-row"><span>提前提醒</span><div class="stepper" data-key="warnSeconds" data-step="30" data-min="0" data-max="300"><button>−</button><b></b><button>＋</button></div><span class="unit">秒</span></div>
         <label class="switch-row"><span>答错一题，已答对的清零重来（答错都会公布答案并换题）</span><input type="checkbox" class="switch" data-key="wrongResets"></label>
+        <label class="switch-row"><span>多出孩子答错过的题（掌握后自动减少），同一轮答错的题隔两题再考一次</span><input type="checkbox" class="switch" data-key="reviewWrong"></label>
+        <label class="switch-row"><span>答对、答错、通关时播放音效</span><input type="checkbox" class="switch" data-key="soundEffects"></label>
         <label class="switch-row"><span>答完后自动继续播放</span><input type="checkbox" class="switch" data-key="resumePlayback"></label>
         <label class="switch-row"><span>开机自动开始守护</span><input type="checkbox" class="switch" data-key="autoStart"></label>
       </div>
@@ -229,6 +231,7 @@
             <option value="CHOICE">四个选项选一个</option>
           </select>
         </label>
+        <label class="switch-row"><span>自动调整难度：答得好就加大范围，答得吃力就缩小（以下选的范围是上限）</span><input type="checkbox" class="switch" id="mathAdaptive"></label>
         <label class="field"><span>数字范围</span>
           <select id="mathMax">
             <option value="10">10 以内</option>

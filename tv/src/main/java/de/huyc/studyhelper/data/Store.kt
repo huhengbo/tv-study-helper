@@ -3,6 +3,7 @@ package de.huyc.studyhelper.data
 import android.content.Context
 import android.content.SharedPreferences
 import android.util.Log
+import de.huyc.studyhelper.quiz.AdaptiveMath
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -20,6 +21,7 @@ class Store(context: Context) {
     private val legacyQuestionsFile = File(dir, "questions.json")
     private val packDir = File(dir, "packs")
     private val logFile = File(dir, "answers.json")
+    private val dailyFile = File(dir, "daily.json")
     private val prefs: SharedPreferences = app.getSharedPreferences("state", Context.MODE_PRIVATE)
     private val listeners = CopyOnWriteArrayList<() -> Unit>()
 
@@ -210,6 +212,39 @@ class Store(context: Context) {
     fun appendLog(entry: AnswerLog) {
         val logs = (listOf(entry) + logs()).take(MAX_LOGS)
         save(logFile, JSONArray(logs.map { it.toJson() }).toString())
+        saveDaily(DailyStats.record(daily(), entry))
+    }
+
+    /** 按天汇总的统计，比 [logs] 保留得久。 */
+    fun daily(): Map<String, DayStats> = load(dailyFile)
+        ?.let { runCatching { DailyStats.fromJson(JSONObject(it)) }.getOrNull() }
+        ?: emptyMap()
+
+    /** 一轮答题通过（[study] 为主动学习，否则是锁屏答题）。 */
+    @Synchronized
+    fun recordRound(study: Boolean, time: Long = System.currentTimeMillis()) =
+        saveDaily(DailyStats.recordRound(daily(), study, time))
+
+    private fun saveDaily(stats: Map<String, DayStats>) = save(dailyFile, DailyStats.toJson(stats).toString())
+
+    /** 数学自适应出题的当前范围（0 表示还没调整过）及上次调整的时间。 */
+    var mathLevel: Int
+        get() = prefs.getInt("mathLevel", 0)
+        private set(v) = prefs.edit().putInt("mathLevel", v).apply()
+
+    private var mathLevelSince: Long
+        get() = prefs.getLong("mathLevelSince", 0)
+        set(v) = prefs.edit().putLong("mathLevelSince", v).apply()
+
+    /** 一轮答题通过后，按新的作答记录调整数学范围。 */
+    @Synchronized
+    fun adaptMath(time: Long = System.currentTimeMillis()) {
+        val config = settings.math
+        val next = AdaptiveMath.next(config, mathLevel, logs(), mathLevelSince)
+        if (next != AdaptiveMath.level(config, mathLevel)) {
+            mathLevel = next
+            mathLevelSince = time
+        }
     }
 
     fun logs(): List<AnswerLog> = load(logFile)

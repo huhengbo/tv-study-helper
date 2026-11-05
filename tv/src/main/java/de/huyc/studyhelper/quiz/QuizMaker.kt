@@ -2,13 +2,18 @@ package de.huyc.studyhelper.quiz
 
 import de.huyc.studyhelper.data.Question
 import de.huyc.studyhelper.data.Settings
+import kotlin.math.ln
 import kotlin.random.Random
 
 /**
  * 组卷：按设置里启用的科目轮流出题，每个科目的题来自题库和该科目的自动出题器。
  * 一个科目既没有题库题也没有可用的出题器时跳过；全部为空时退回数学加减法。
+ * [weight] 给题目一个出现的倾向（见 [ReviewWeights]），权重大的更早出现；默认所有题一样。
  */
-class QuizMaker(private val random: Random = Random.Default) {
+class QuizMaker(
+    private val random: Random = Random.Default,
+    private val weight: (Question) -> Double = ReviewWeights.NONE,
+) {
 
     fun make(settings: Settings, bank: List<Question>, count: Int = settings.questionCount): List<QuizItem> {
         val sources = settings.subjects.sortedBy { it.ordinal }.mapNotNull { subject ->
@@ -26,16 +31,34 @@ class QuizMaker(private val random: Random = Random.Default) {
         }
     }
 
-    /** 一个科目的题源：题库按洗牌顺序不重复地取，取完再洗；有出题器时与题库约各占一半。 */
+    /** 一个科目的题源：题库按加权洗牌的顺序不重复地取，取完再洗；有出题器时与题库约各占一半。 */
     private inner class Source(private val pool: List<Question>, private val generators: List<QuestionGenerator>) {
         private val queue = ArrayDeque<Question>()
 
         fun next(settings: Settings, bank: List<Question>): Question? {
             val useGenerator = generators.isNotEmpty() && (pool.isEmpty() || random.nextBoolean())
-            if (useGenerator) generators.random(random).generate(settings, bank, random)?.let { return it }
+            if (useGenerator) generated(generators.random(random), settings, bank)?.let { return it }
             if (pool.isEmpty()) return null
-            if (queue.isEmpty()) queue.addAll(pool.shuffled(random))
+            if (queue.isEmpty()) queue.addAll(weightedShuffle(pool))
             return queue.removeFirst()
         }
+
+        /** 出题器每次只给一道题，多要几道，按权重挑一道。 */
+        private fun generated(generator: QuestionGenerator, settings: Settings, bank: List<Question>): Question? {
+            val candidates = List(CANDIDATES) { generator.generate(settings, bank, random) }.filterNotNull()
+            return candidates.minByOrNull { priority(it) }
+        }
+    }
+
+    /** 加权洗牌（指数时钟法）：权重越大越可能排在前面，权重为 1 时等同普通洗牌。 */
+    private fun weightedShuffle(pool: List<Question>): List<Question> =
+        pool.map { it to priority(it) }.sortedBy { it.second }.map { it.first }
+
+    private fun priority(q: Question): Double =
+        -ln(1.0 - random.nextDouble()) / weight(q).coerceAtLeast(MIN_WEIGHT)
+
+    private companion object {
+        const val CANDIDATES = 4
+        const val MIN_WEIGHT = 0.01
     }
 }

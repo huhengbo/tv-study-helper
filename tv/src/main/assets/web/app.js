@@ -254,6 +254,7 @@ function renderSettings() {
   $('#mathAdd').checked = s.math.add;
   $('#mathSub').checked = s.math.sub;
   $('#mathMax').value = String(s.math.max);
+  $('#mathAdaptive').checked = !!s.math.adaptive;
   $$('input[name=countMode]').forEach(r => { r.checked = r.value === s.countMode; });
   $('#packIndexUrl').value = s.packIndexUrl || '';
   renderVoice();
@@ -279,8 +280,8 @@ $$('#subjects input').forEach(el => el.onchange = () => {
   if (!subjects.length) { el.checked = true; toast('至少保留一个科目', true); return; }
   saveSettings({ subjects });
 });
-const saveMath = () => saveSettings({ math: { enabled: $('#mathEnabled').checked, add: $('#mathAdd').checked, sub: $('#mathSub').checked, max: +$('#mathMax').value, mode: $('#mathMode').value } });
-['#mathEnabled', '#mathAdd', '#mathSub', '#mathMax', '#mathMode'].forEach(s => $(s).onchange = saveMath);
+const saveMath = () => saveSettings({ math: { enabled: $('#mathEnabled').checked, add: $('#mathAdd').checked, sub: $('#mathSub').checked, max: +$('#mathMax').value, mode: $('#mathMode').value, adaptive: $('#mathAdaptive').checked } });
+['#mathEnabled', '#mathAdd', '#mathSub', '#mathMax', '#mathMode', '#mathAdaptive'].forEach(s => $(s).onchange = saveMath);
 $$('input[name=countMode]').forEach(r => r.onchange = () => saveSettings({ countMode: r.value }));
 
 $('#savePin').onclick = () => {

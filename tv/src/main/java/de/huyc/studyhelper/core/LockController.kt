@@ -11,7 +11,9 @@ import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
 import de.huyc.studyhelper.data.Store
+import de.huyc.studyhelper.quiz.AdaptiveMath
 import de.huyc.studyhelper.quiz.QuizMaker
+import de.huyc.studyhelper.quiz.ReviewWeights
 import de.huyc.studyhelper.ui.QuizActivity
 import de.huyc.studyhelper.ui.QuizView
 import de.huyc.studyhelper.ui.WarningToast
@@ -57,9 +59,11 @@ class LockController(private val context: Context, private val store: Store, pri
     }
 
     fun newQuizView(ctx: Context, preview: Boolean, close: () -> Unit): QuizView {
-        val settings = store.settings
+        // 数学范围按近期正确率调整（未开启时就是家长设置的范围）
+        val settings = store.settings.let { it.copy(math = AdaptiveMath.effective(it.math, store.mathLevel)) }
+        val weights = if (settings.reviewWrong) ReviewWeights(store.logs(), System.currentTimeMillis())::weight else ReviewWeights.NONE
         // 多备几道，答错清零或换题时不重复
-        val items = QuizMaker().make(settings, store.activeQuestions, settings.questionCount * 3)
+        val items = QuizMaker(weight = weights).make(settings, store.activeQuestions, settings.questionCount * 3)
         return QuizView(ctx, store, speaker, items, preview) { passed ->
             close()
             if (!preview && passed) unlock()
