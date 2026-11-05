@@ -105,6 +105,7 @@ $$('.tabbar button').forEach(b => b.onclick = () => {
   $$('.page').forEach(p => p.classList.toggle('hidden', p.dataset.page !== b.dataset.tab));
   if (b.dataset.tab === 'bank') { if (state.pack) openPack(state.pack.id); else loadPacks(); }
   if (b.dataset.tab === 'apps') loadApps();
+  if (b.dataset.tab === 'voice') loadOffline();
   window.scrollTo({ top: 0, behavior: 'smooth' });
 });
 
@@ -321,6 +322,12 @@ $('#ttsVoice').onchange = () => {
 
 function updateVoiceVisibility() {
   const asr = segValue('asrProvider'), tts = $('#ttsEnabled').checked ? segValue('ttsProvider') : 'none';
+  const online = asr === 'baidu' || asr === 'volc';
+  $('#offlineCard').classList.toggle('hidden', asr === 'none');
+  $('#fallbackRow').classList.toggle('hidden', !online);
+  $('#testAsr').classList.toggle('hidden', asr === 'none');
+  $('#testAsr').textContent = asr === 'offline' ? '测试离线识别' : '测试连接';
+  $('#asrHint').textContent = asr === 'offline' && !state.offline?.installed ? '请先在下面把离线语音包下载到电视。' : '';
   $('#ttsBox').classList.toggle('hidden', !$('#ttsEnabled').checked);
   $('#baiduKeys').classList.toggle('hidden', asr !== 'baidu' && tts !== 'baidu');
   $('#volcKeys').classList.toggle('hidden', asr !== 'volc' && tts !== 'volc');
@@ -332,6 +339,7 @@ $('#ttsSpeed').oninput = () => { $('#speedVal').textContent = $('#ttsSpeed').val
 function renderVoice() {
   const v = state.settings.voice;
   setSeg('asrProvider', v.asrProvider);
+  $('#asrOfflineFallback').checked = v.asrOfflineFallback;
   setSeg('ttsProvider', v.ttsProvider);
   $('#ttsEnabled').checked = v.ttsEnabled;
   fillVoices(v.ttsProvider, v.ttsVoice);
@@ -344,6 +352,7 @@ function renderVoice() {
 function voicePatch() {
   const voice = {
     asrProvider: segValue('asrProvider'),
+    asrOfflineFallback: $('#asrOfflineFallback').checked,
     ttsEnabled: $('#ttsEnabled').checked,
     ttsProvider: segValue('ttsProvider'),
     ttsVoice: $('#ttsVoice').value === '__custom' ? '' : $('#ttsVoice').value,
@@ -359,6 +368,38 @@ $('#testAsr').onclick = async e => {
   await run(async () => { await saveVoice(); const r = await api('test/asr', { method: 'POST' }); toast(r.message); });
   e.target.disabled = false;
 };
+// ---------- 离线语音包 ----------
+
+let offlinePoll = null;
+async function loadOffline() {
+  try { renderOffline(await api('voice/offline')); } catch (_) { /* 打开语音页时顺带刷新，失败不打扰 */ }
+}
+
+function renderOffline(o) {
+  state.offline = o;
+  const st = o.status, busy = st.phase === 'DOWNLOADING';
+  $('#offlineSize').textContent = Math.round(o.size / 1048576);
+  $('#offlineBar').classList.toggle('hidden', !busy);
+  $('#offlineBar i').style.width = (st.progress || 0) + '%';
+  const msg = $('#offlineMsg');
+  msg.textContent = busy ? `${st.message} ${st.progress}%` : st.phase === 'FAILED' ? st.message : o.installed ? '已下载到电视' : '还没有下载';
+  msg.className = 'small ' + (st.phase === 'FAILED' ? 'bad-mark' : o.installed ? 'ok-mark' : 'muted');
+  const install = $('#offlineInstall');
+  install.classList.toggle('hidden', o.installed);
+  install.disabled = busy;
+  install.textContent = busy ? '下载中…' : st.phase === 'FAILED' ? '再试一次' : '下载到电视';
+  $('#offlineRemove').classList.toggle('hidden', !o.installed);
+  updateVoiceVisibility();
+  clearInterval(offlinePoll);
+  if (busy) offlinePoll = setInterval(loadOffline, 1000);
+}
+
+$('#offlineInstall').onclick = () => run(async () => renderOffline(await api('voice/offline/install', { method: 'POST' })));
+$('#offlineRemove').onclick = () => {
+  if (!confirm('删除电视上的离线语音包？之后要用离线识别需要重新下载。')) return;
+  run(async () => renderOffline(await api('voice/offline/remove', { method: 'POST' })), '已删除');
+};
+
 $('#testTts').onclick = async e => {
   e.target.disabled = true;
   await run(async () => { await saveVoice(); const r = await api('test/tts', { method: 'POST', body: { text: $('#ttsText').value } }); toast(r.message); });

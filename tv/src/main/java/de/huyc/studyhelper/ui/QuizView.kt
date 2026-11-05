@@ -8,6 +8,7 @@ import android.graphics.Color
 import android.os.Handler
 import android.os.Looper
 import android.text.TextUtils
+import android.util.Log
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.KeyEvent
@@ -23,6 +24,7 @@ import androidx.dynamicanimation.animation.DynamicAnimation
 import androidx.dynamicanimation.animation.SpringAnimation
 import androidx.dynamicanimation.animation.SpringForce
 import de.huyc.studyhelper.data.AnswerLog
+import de.huyc.studyhelper.data.VoiceConfig
 import de.huyc.studyhelper.data.AnswerMode
 import de.huyc.studyhelper.data.Subject
 import de.huyc.studyhelper.data.Store
@@ -30,6 +32,7 @@ import de.huyc.studyhelper.quiz.AnswerMatcher
 import de.huyc.studyhelper.quiz.QuizItem
 import de.huyc.studyhelper.quiz.QuizSession
 import de.huyc.studyhelper.voice.AsrProvider
+import de.huyc.studyhelper.voice.AsrSession
 import de.huyc.studyhelper.voice.Phrases
 import de.huyc.studyhelper.voice.Speaker
 import de.huyc.studyhelper.voice.VoiceKey
@@ -61,6 +64,8 @@ class QuizView(
     private val asr: AsrProvider? = VoiceProviders.asr(context, settings.voice)
     private val tts = if (settings.voice.ttsEnabled) VoiceProviders.tts(context, settings.voice) else null
     private val recorder = VoiceRecorder(context)
+    /** 正在进行的边录边识别，只在主线程读写。 */
+    private var liveAsr: AsrSession? = null
     private val worker = Executors.newSingleThreadExecutor()
     private val main = Handler(Looper.getMainLooper())
     private var phase = Phase.INTRO
@@ -101,6 +106,7 @@ class QuizView(
         addView(confetti, LayoutParams(-1, -1))
         // 本轮的题（含随机生成的数学题）和固定用语，提前合成
         speaker.warmUp(tts, Phrases.all(settings) + items.map { it.question.speakText })
+        asr?.let { worker.execute { runCatching { it.prepare() }.onFailure { e -> Log.w(TAG, "语音识别准备失败", e) } } }
     }
 
     private fun buildContent(): View {
@@ -211,6 +217,7 @@ class QuizView(
 
     fun release() {
         released = true
+        cancelLiveAsr()
         recorder.stop()
         speaker.stop()
         mascotBob.cancel()
@@ -336,17 +343,28 @@ class QuizView(
         phase = Phase.LISTENING
         mic.listening = true
         setStatus("我在听…说完松开按键")
+        val item = session.current
+        // 离线识别边录边解码，松开按键后很快出结果
+        val live = runCatching { asr?.startSession(item.question.subject.speechLanguage, item.question.answers) }.getOrNull()
+        liveAsr = live
         recorder.start(object : VoiceRecorder.Listener {
             override fun onLevel(level: Float) = mic.setLevel(level)
+            override fun onAudio(buf: ByteArray, length: Int) { live?.accept(buf, length) }
             override fun onFinished(pcm: ByteArray) { main.post { onRecorded(pcm) } }
-            override fun onError(message: String) { main.post { mic.listening = false; phase = Phase.READY; setStatus(message, true) } }
+            override fun onError(message: String) { main.post { cancelLiveAsr(); mic.listening = false; phase = Phase.READY; setStatus(message, true) } }
         })
+    }
+
+    private fun cancelLiveAsr() {
+        liveAsr?.cancel()
+        liveAsr = null
     }
 
     private fun onRecorded(pcm: ByteArray) {
         if (released) return
         mic.listening = false
         if (VoiceRecorder.durationMs(pcm) < 400) {
+            cancelLiveAsr()
             phase = Phase.READY
             setStatus("要一直按住语音键说话哦", true)
             return
@@ -355,16 +373,17 @@ class QuizView(
         setStatus("我想想", thinking = true)
         val item = session.current
         val provider = asr ?: return
+        val live = liveAsr.also { liveAsr = null }
         worker.execute {
-            val result = runCatching { provider.recognize(pcm, item.question.subject.speechLanguage) }
+            val result = runCatching { live?.finish() ?: provider.recognize(pcm, item.question.subject.speechLanguage, item.question.answers) }
             main.post {
                 if (released) return@post
                 result.fold(
                     onSuccess = { heard -> judge(item, heard, AnswerMatcher.isCorrect(item.question.subject, heard, item.question.answers)) },
                     onFailure = { e ->
                         phase = Phase.READY
-                        setStatus("网络开小差了，再说一次吧", true)
-                        android.util.Log.w("QuizView", "识别失败", e)
+                        setStatus(if (settings.voice.asrProvider == VoiceConfig.PROVIDER_OFFLINE) "没听清，再说一次吧" else "网络开小差了，再说一次吧", true)
+                        Log.w(TAG, "识别失败", e)
                     },
                 )
             }
@@ -561,6 +580,7 @@ class QuizView(
     }
 
     companion object {
+        private const val TAG = "QuizView"
         private const val READY_TEXT = "按住遥控器上的语音键，说出答案"
         /** 答错后公布答案的停留时间。 */
         private const val REVEAL_MS = 4000L

@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.os.SystemClock
 import android.util.Log
 import de.huyc.studyhelper.App
 import de.huyc.studyhelper.BuildConfig
@@ -21,11 +22,15 @@ import de.huyc.studyhelper.data.SpeechLanguage
 import de.huyc.studyhelper.data.Subject
 import de.huyc.studyhelper.data.enumOr
 import de.huyc.studyhelper.data.Store
+import de.huyc.studyhelper.data.VoiceConfig
 import de.huyc.studyhelper.data.strings
 import de.huyc.studyhelper.quiz.AnswerMatcher
 import de.huyc.studyhelper.ui.Emoji
 import de.huyc.studyhelper.ui.Themes
+import de.huyc.studyhelper.voice.LocalAsr
+import de.huyc.studyhelper.voice.LocalAsrProvider
 import de.huyc.studyhelper.voice.VoiceProviders
+import de.huyc.studyhelper.voice.VoiceRecorder
 import fi.iki.elonen.NanoHTTPD
 import org.json.JSONArray
 import org.json.JSONObject
@@ -121,6 +126,9 @@ class AdminServer(private val context: Context, private val store: Store) : Nano
             "GET update/status" -> ok(app.updater.status.toJson())
             "POST test/tts" -> testTts(body(session).optString("text", "小朋友你好，我们来答题吧"))
             "POST test/asr" -> testAsr()
+            "GET voice/offline" -> ok(app.asrPack.toJson())
+            "POST voice/offline/install" -> { app.asrPack.start(); ok(app.asrPack.toJson()) }
+            "POST voice/offline/remove" -> { app.asrPack.remove(); ok(app.asrPack.toJson()) }
             else -> throw HttpError(Response.Status.NOT_FOUND, "未知接口")
         }
     }
@@ -399,11 +407,31 @@ class AdminServer(private val context: Context, private val store: Store) : Nano
     }
 
     private fun testAsr(): Response {
-        val provider = VoiceProviders.asr(context, store.settings.voice)
+        val voice = store.settings.voice
+        if (voice.asrProvider == VoiceConfig.PROVIDER_OFFLINE) return testOfflineAsr()
+        // 只测在线服务本身，不要让离线识别兜底掩盖密钥错误
+        val provider = VoiceProviders.asr(context, voice.copy(asrOfflineFallback = false))
             ?: throw HttpError(Response.Status.BAD_REQUEST, "请先选择识别服务并填写密钥")
         // 1 秒静音：密钥正确时返回空结果，错误时抛出鉴权失败
         val text = provider.recognize(ByteArray(32000), SpeechLanguage.CHINESE)
         return ok(JSONObject().put("message", "连接成功" + if (text.isNotEmpty()) "（识别到：$text）" else ""))
+    }
+
+    private fun testOfflineAsr(): Response {
+        val pack = app.asrPack
+        if (!pack.installed) throw HttpError(Response.Status.BAD_REQUEST, "请先下载离线语音包")
+        val started = SystemClock.elapsedRealtime()
+        LocalAsr.warmUp(pack.dir)
+        val loaded = SystemClock.elapsedRealtime()
+        // 和答题时一样边录边识别：按录音的节奏送 2 秒静音，再看「松开按键」后多久出结果
+        val live = LocalAsrProvider(pack).startSession(SpeechLanguage.CHINESE, emptyList())
+        val chunk = ByteArray(VoiceRecorder.SAMPLE_RATE / 10) // 50ms
+        repeat(40) { live.accept(chunk, chunk.size); Thread.sleep(50) }
+        val released = SystemClock.elapsedRealtime()
+        live.finish()
+        val done = SystemClock.elapsedRealtime()
+        fun sec(ms: Long) = "%.1f".format(ms / 1000.0)
+        return ok(JSONObject().put("message", "离线识别可用（加载模型 ${sec(loaded - started)} 秒，说完后 ${sec(done - released)} 秒出结果）"))
     }
 
     // ---- 工具 ----

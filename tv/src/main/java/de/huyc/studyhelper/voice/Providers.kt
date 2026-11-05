@@ -1,16 +1,34 @@
 package de.huyc.studyhelper.voice
 
 import android.content.Context
+import android.net.ConnectivityManager
 import android.util.Base64
+import android.util.Log
+import de.huyc.studyhelper.App
 import de.huyc.studyhelper.data.SpeechLanguage
 import de.huyc.studyhelper.data.VoiceConfig
 import org.json.JSONObject
+import java.io.IOException
 import java.net.URLEncoder
 import java.util.UUID
 
 /** 语音识别：输入 16kHz/16bit/单声道 PCM，返回识别文本。在后台线程调用。 */
 interface AsrProvider {
-    fun recognize(pcm: ByteArray, language: SpeechLanguage): String
+    /** 答题开始时调用，提前做耗时的准备（如加载离线模型）。 */
+    fun prepare() {}
+
+    /** [hints] 是可能的答案，支持热词的服务用来提高识别率。 */
+    fun recognize(pcm: ByteArray, language: SpeechLanguage, hints: List<String> = emptyList()): String
+
+    /** 支持边录边识别的服务返回会话，录音时就开始解码，松开按键后只剩结尾一小段要算；不支持的返回 null。 */
+    fun startSession(language: SpeechLanguage, hints: List<String>): AsrSession? = null
+}
+
+/** 边录边识别的一次会话。[accept] 在录音线程调用，不能阻塞；[finish] 在后台线程调用。 */
+interface AsrSession {
+    fun accept(pcm: ByteArray, length: Int)
+    fun finish(): String
+    fun cancel()
 }
 
 /** 语音合成：返回 mp3 音频。在后台线程调用。 */
@@ -22,10 +40,24 @@ interface TtsProvider {
 
 object VoiceProviders {
 
-    fun asr(context: Context, c: VoiceConfig): AsrProvider? = when (c.asrProvider) {
-        VoiceConfig.PROVIDER_BAIDU -> if (c.baiduApiKey.isNotBlank() && c.baiduSecretKey.isNotBlank()) BaiduAsr(BaiduAuth.get(context, c), deviceId(context)) else null
-        VoiceConfig.PROVIDER_VOLC -> if (c.volcApiKey.isNotBlank() || (c.volcAppId.isNotBlank() && c.volcAccessKey.isNotBlank())) VolcAsr(c) else null
-        else -> null
+    /**
+     * 选了在线服务又开了 [VoiceConfig.asrOfflineFallback] 时，在线识别出错或电视没联网就改用离线识别；
+     * 在线服务没填密钥也用离线识别。离线语音包没下载时离线识别不可用。
+     */
+    fun asr(context: Context, c: VoiceConfig): AsrProvider? {
+        val pack = App.instance.asrPack
+        val offline = if (pack.installed) LocalAsrProvider(pack) else null
+        val online = when (c.asrProvider) {
+            VoiceConfig.PROVIDER_OFFLINE -> return offline
+            VoiceConfig.PROVIDER_BAIDU -> if (c.baiduApiKey.isNotBlank() && c.baiduSecretKey.isNotBlank()) BaiduAsr(BaiduAuth.get(context, c), deviceId(context)) else null
+            VoiceConfig.PROVIDER_VOLC -> if (c.volcApiKey.isNotBlank() || (c.volcAppId.isNotBlank() && c.volcAccessKey.isNotBlank())) VolcAsr(c) else null
+            else -> return null
+        }
+        if (offline == null || !c.asrOfflineFallback) return online
+        if (online == null) return offline
+        val connectivity = context.applicationContext.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        @Suppress("DEPRECATION")
+        return FallbackAsr(online, offline, isOnline = { connectivity.activeNetworkInfo?.isConnected == true })
     }
 
     fun tts(context: Context, c: VoiceConfig): TtsProvider? = when (c.ttsProvider) {
@@ -39,6 +71,28 @@ object VoiceProviders {
         return prefs.getString("id", null) ?: UUID.randomUUID().toString().replace("-", "").also {
             prefs.edit().putString("id", it).apply()
         }
+    }
+}
+
+/** 在线识别失败（网络或服务出错）时改用离线识别；没联网直接用离线，不等超时。 */
+class FallbackAsr(
+    private val online: AsrProvider,
+    private val offline: AsrProvider,
+    private val isOnline: () -> Boolean,
+    private val log: (String) -> Unit = { Log.w("FallbackAsr", it) },
+) : AsrProvider {
+
+    override fun recognize(pcm: ByteArray, language: SpeechLanguage, hints: List<String>): String {
+        if (isOnline()) {
+            try {
+                return online.recognize(pcm, language, hints)
+            } catch (e: IOException) {
+                log("在线识别失败，改用离线识别：${e.message}")
+            }
+        } else {
+            log("电视没联网，用离线识别")
+        }
+        return offline.recognize(pcm, language, hints)
     }
 }
 
@@ -74,7 +128,7 @@ class BaiduAuth private constructor(private val context: Context, private val ap
 
 /** 短语音识别标准版：https://cloud.baidu.com/doc/SPEECH/s/Jlbxdezuf */
 class BaiduAsr(private val auth: BaiduAuth, private val cuid: String) : AsrProvider {
-    override fun recognize(pcm: ByteArray, language: SpeechLanguage): String {
+    override fun recognize(pcm: ByteArray, language: SpeechLanguage, hints: List<String>): String {
         val body = JSONObject()
             .put("format", "pcm")
             .put("rate", VoiceRecorder.SAMPLE_RATE)
@@ -128,7 +182,7 @@ private fun volcAuthHeaders(c: VoiceConfig, appIdHeader: String): Map<String, St
 
 /** 录音文件识别极速版（同步返回）：https://docs.volcengine.com/docs/doubao-voice/large-model-recording-file-lite-recognition-api */
 class VolcAsr(private val c: VoiceConfig) : AsrProvider {
-    override fun recognize(pcm: ByteArray, language: SpeechLanguage): String {
+    override fun recognize(pcm: ByteArray, language: SpeechLanguage, hints: List<String>): String {
         // 豆包大模型识别自动判断中英文，无需指定语言
         val wav = Wav.wrap(pcm, VoiceRecorder.SAMPLE_RATE)
         val body = JSONObject()

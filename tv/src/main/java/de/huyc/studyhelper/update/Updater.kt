@@ -13,7 +13,6 @@ import de.huyc.studyhelper.voice.Http
 import org.json.JSONObject
 import java.io.File
 import java.io.IOException
-import java.security.MessageDigest
 import java.util.concurrent.ExecutorCompletionService
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -117,48 +116,10 @@ class Updater(context: Context) {
         val dir = app.getExternalFilesDir("update") ?: throw IOException("电视存储不可用")
         dir.listFiles()?.forEach { it.delete() }
         val target = File(dir, m.apk.name)
-        var lastError: Exception? = null
-        for (mirror in mirrors) {
-            try {
-                downloadFrom(mirror + m.apk.url, target, m)
-                return target
-            } catch (e: Exception) {
-                Log.w(TAG, "从 ${mirror.ifEmpty { "GitHub" }} 下载失败：${e.message}")
-                lastError = e
-                target.delete()
-            }
+        MirrorDownload.download(mirrors, m.apk.url, target, m.apk.size, m.apk.sha256) { total ->
+            status = Status(Phase.DOWNLOADING, (total * 100 / m.apk.size).toInt(), "正在下载 v${m.version}")
         }
-        throw IOException("下载失败，请稍后再试（${lastError?.message}）")
-    }
-
-    private fun downloadFrom(url: String, target: File, m: UpdateManifest) {
-        val conn = Http.open(url)
-        try {
-            conn.connectTimeout = TIMEOUT_MS
-            conn.readTimeout = 30_000
-            if (conn.responseCode != 200) throw IOException("HTTP ${conn.responseCode}")
-            val digest = MessageDigest.getInstance("SHA-256")
-            var total = 0L
-            conn.inputStream.use { input ->
-                target.outputStream().use { out ->
-                    val buf = ByteArray(64 * 1024)
-                    while (true) {
-                        val n = input.read(buf)
-                        if (n < 0) break
-                        total += n
-                        if (total > m.apk.size) throw IOException("文件大小不对")
-                        out.write(buf, 0, n)
-                        digest.update(buf, 0, n)
-                        status = Status(Phase.DOWNLOADING, (total * 100 / m.apk.size).toInt(), "正在下载 v${m.version}")
-                    }
-                }
-            }
-            if (total != m.apk.size) throw IOException("下载不完整")
-            val sha = digest.digest().joinToString("") { "%02x".format(it) }
-            if (sha != m.apk.sha256) throw IOException("校验码不对")
-        } finally {
-            conn.disconnect()
-        }
+        return target
     }
 
     // ---- 核对与安装 ----

@@ -22,6 +22,9 @@ import android.view.WindowManager
 import android.widget.FrameLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import de.huyc.studyhelper.App
+import de.huyc.studyhelper.data.SpeechLanguage
+import de.huyc.studyhelper.voice.LocalAsrProvider
 import de.huyc.studyhelper.voice.VoiceKey
 import de.huyc.studyhelper.voice.Wav
 import de.huyc.studyhelper.voice.XiaoaiGuard
@@ -72,7 +75,7 @@ class VoiceDiagActivity : Activity() {
         } else {
             setContentView(root)
         }
-        log("语音诊断：按住语音键说话，松开查看结果；确认键 回放；方向键上 切换录音源；方向键下 开关「让小爱让出麦克风」")
+        log("语音诊断：按住语音键说话，松开查看结果；确认键 回放；方向键上 切换录音源；方向键下 开关「让小爱让出麦克风」；方向键右 用离线识别听一遍")
         log("悬浮窗权限：" + Settings.canDrawOverlays(this))
         log("录音权限：" + (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED))
         val am = getSystemService(AUDIO_SERVICE) as AudioManager
@@ -114,6 +117,9 @@ class VoiceDiagActivity : Activity() {
         }
         if (event.action == KeyEvent.ACTION_DOWN && event.keyCode == KeyEvent.KEYCODE_DPAD_CENTER && event.repeatCount == 0) {
             replay(); return true
+        }
+        if (event.action == KeyEvent.ACTION_DOWN && event.keyCode == KeyEvent.KEYCODE_DPAD_RIGHT && event.repeatCount == 0) {
+            recognizeOffline(); return true
         }
         if (event.action == KeyEvent.ACTION_DOWN && event.keyCode == KeyEvent.KEYCODE_DPAD_UP) {
             sourceIndex = (sourceIndex + 1) % sources.size
@@ -176,6 +182,19 @@ class VoiceDiagActivity : Activity() {
             track.play()
             Thread.sleep(pcm.size / 32L + 300)
             track.release()
+        }
+    }
+
+    private fun recognizeOffline() {
+        val pcm = lastPcm ?: return log("还没有录音")
+        val pack = App.instance.asrPack
+        if (!pack.installed) return log("还没有下载离线语音包（手机管理页「语音」里下载）")
+        log("▶ 离线识别中…")
+        thread(name = "voice-diag-asr") {
+            val started = System.currentTimeMillis()
+            val result = runCatching { LocalAsrProvider(pack).recognize(pcm, SpeechLanguage.CHINESE) }
+            val ms = System.currentTimeMillis() - started
+            post(result.fold({ "■ 离线识别（${ms} ms，含首次加载模型）：「$it」" }, { "离线识别失败：$it" }))
         }
     }
 

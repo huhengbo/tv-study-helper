@@ -20,6 +20,8 @@ class VoiceRecorder(private val context: Context) {
     interface Listener {
         /** 实时音量 0..1，用于驱动麦克风动效；在录音线程回调。 */
         fun onLevel(level: Float)
+        /** 每读到一段音频（约 50ms）回调一次，用于边录边识别；在录音线程回调，[buf] 会被复用。 */
+        fun onAudio(buf: ByteArray, length: Int) {}
         /** 录音结束；在录音线程回调。 */
         fun onFinished(pcm: ByteArray)
         fun onError(message: String)
@@ -72,6 +74,7 @@ class VoiceRecorder(private val context: Context) {
                 val n = r.read(buf, 0, buf.size)
                 if (n > 0) {
                     out.write(buf, 0, n)
+                    listener.onAudio(buf, n)
                     listener.onLevel(level(buf, n))
                 }
             }

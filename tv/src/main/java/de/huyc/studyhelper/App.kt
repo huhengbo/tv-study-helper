@@ -6,6 +6,7 @@ import android.util.Log
 import de.huyc.studyhelper.core.LockController
 import de.huyc.studyhelper.data.Store
 import de.huyc.studyhelper.update.Updater
+import de.huyc.studyhelper.voice.LocalAsrPack
 import de.huyc.studyhelper.voice.Speaker
 
 class App : Application() {
@@ -16,6 +17,7 @@ class App : Application() {
     lateinit var lock: LockController
         private set
     val updater by lazy { Updater(this) }
+    val asrPack by lazy { LocalAsrPack(this) }
 
     override fun onCreate() {
         super.onCreate()

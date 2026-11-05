@@ -126,9 +126,14 @@ data class MathConfig(
     }
 }
 
-/** 第三方语音服务凭据：百度用 API Key/Secret Key；火山新版控制台用 apiKey，旧版用 appId + accessKey。 */
+/**
+ * 语音服务设置。识别可选离线（电视本机，需先下载离线语音包）或在线服务。
+ * 第三方语音服务凭据：百度用 API Key/Secret Key；火山新版控制台用 apiKey，旧版用 appId + accessKey。
+ */
 data class VoiceConfig(
     val asrProvider: String = PROVIDER_NONE,
+    /** 在线识别出错或没联网时改用离线识别（已下载离线语音包时生效）。 */
+    val asrOfflineFallback: Boolean = true,
     val ttsEnabled: Boolean = false,
     val ttsProvider: String = PROVIDER_NONE,
     val ttsVoice: String = "",
@@ -143,6 +148,7 @@ data class VoiceConfig(
         fun s(v: String) = if (maskSecrets && v.isNotEmpty()) MASK else v
         return JSONObject()
             .put("asrProvider", asrProvider)
+            .put("asrOfflineFallback", asrOfflineFallback)
             .put("ttsEnabled", ttsEnabled)
             .put("ttsProvider", ttsProvider)
             .put("ttsVoice", ttsVoice)
@@ -159,6 +165,7 @@ data class VoiceConfig(
         fun keep(key: String, old: String) = o.optString(key, old).let { if (it == MASK) old else it.trim() }
         return VoiceConfig(
             asrProvider = o.optString("asrProvider", asrProvider),
+            asrOfflineFallback = o.optBoolean("asrOfflineFallback", asrOfflineFallback),
             ttsEnabled = o.optBoolean("ttsEnabled", ttsEnabled),
             ttsProvider = o.optString("ttsProvider", ttsProvider),
             ttsVoice = o.optString("ttsVoice", ttsVoice).trim(),
@@ -175,6 +182,7 @@ data class VoiceConfig(
         const val PROVIDER_NONE = "none"
         const val PROVIDER_BAIDU = "baidu"
         const val PROVIDER_VOLC = "volc"
+        const val PROVIDER_OFFLINE = "offline"
         private const val MASK = "******"
 
         fun fromJson(o: JSONObject?) = if (o == null) VoiceConfig() else VoiceConfig().merge(o)

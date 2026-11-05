@@ -13,7 +13,8 @@
 
 - **计时**：每次可看 N 分钟；可只统计指定 App（如少儿视频）的观看时间，到点前右上角提醒。
 - **科目**：数学（自动出加减法或自定义）、英语（看图说单词）、认字（看字读出来）、拼音（看字选拼音，可从认字题库自动生成）。
-- **作答方式**：语音回答（按住遥控器语音键，第三方识别判分：百度智能云 / 火山引擎）或选择题（方向键选）。任何科目的题都可以设为任一作答方式。
+- **作答方式**：语音回答（按住遥控器语音键说话）或选择题（方向键选）。任何科目的题都可以设为任一作答方式。
+- **语音识别**：离线（电视本机，下载约 48MB 的离线语音包后不联网、不用密钥）或在线（百度智能云 / 火山引擎）。在线识别出错或没网时可自动改用离线识别。
 - **题库包**：按书、绘本或单元分组，每个题库一个开关，可「只练这个题库」；多个题库里相同的题只出一次；按题库统计掌握情况。支持自建、导入/导出文件、从分享题库安装和升级。
 - **朗读**：可选，用第三方 TTS 读题目和鼓励语，适合还不认字的孩子。合成结果缓存在电视上，同一句话只请求一次。
 - **防绕过**：答题界面在系统级浮层上，主页键无效；关机重启、升级后仍保持锁定；开机自动守护。
@@ -43,7 +44,7 @@
 |---|---|
 | 电视端 | Kotlin、Android SDK（minSdk 23，targetSdk 30），无第三方 UI 框架 |
 | 手机管理页 | 原生 HTML/CSS/JS，由电视上的 NanoHTTPD 提供（端口 8848） |
-| 语音 | 百度智能云 / 火山引擎（豆包）的识别与合成接口，按住说话、整段上传 |
+| 语音 | 离线识别 [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx)（中英双语流式 zipformer，边录边识别）；在线识别与合成用百度智能云 / 火山引擎（豆包），按住说话、整段上传 |
 | 质量 | JUnit 单元测试、Android Lint、GitHub Actions |
 
 ## 架构
@@ -54,13 +55,13 @@
  遥控器语音键 ──▶ 答题浮层（系统级窗口） ◀── 守护服务（计时、锁定、暂停其他 App 播放）
                           │                       ▲
                           ▼                       │ 无障碍服务：识别前台 App
-                 录音 16kHz PCM ──▶ 百度 / 火山 识别 ──▶ 本地判分（拼音、中文数字、英文归一化）
+                 录音 16kHz PCM ──▶ 离线（sherpa-onnx，边录边识别）或 百度 / 火山 识别 ──▶ 本地判分（拼音、中文数字、英文归一化）
                  题目文字 ──▶ 百度 / 火山 合成 ──▶ 本地缓存 mp3 ──▶ 朗读
 
  版本更新：GitHub Release（update.json + APK）──直连或国内镜像──▶ 校验码 + 签名核对 ──▶ 系统安装界面
 ```
 
-所有数据（设置、题库、作答记录）都保存在电视上，没有云端账号；联网只用于语音识别与合成、分享题库和版本更新。
+所有数据（设置、题库、作答记录）都保存在电视上，没有云端账号；联网只用于在线语音识别与合成、分享题库、下载离线语音包和版本更新。
 
 ## 安装
 
@@ -78,7 +79,7 @@
 
    脚本安装 APK 并完成同样的授权。
 4. 电视上打开「学习小助手」，手机扫码进入管理页，默认家长密码 `1234`，请立即修改。
-5. 在手机「应用」页勾选要管控的 App，在「语音」页填写百度智能云或火山引擎的密钥（不填也能用选择题作答）。
+5. 在手机「应用」页勾选要管控的 App；在「语音」页选择识别方式：下载离线语音包用离线识别，或填写百度智能云 / 火山引擎的密钥用在线识别（都不设置也能用选择题作答）。
 
 正式版 APK 的签名证书 SHA-256：
 
@@ -96,21 +97,31 @@
 - 小米电视 4A 等 Android 7.1 以前的系统不信任 Let's Encrypt 的根证书，而 GitHub 的下载服务器正在使用它；程序自带了 ISRG Root X1 根证书作为补充（`voice/TlsCompat.kt`）。
 - 答题锁定中不能更新（系统安装界面会被答题浮层挡住）。升级后守护自动恢复，原来是锁定状态的仍然锁定；设置、题库、作答记录都保留。
 
+## 离线语音识别
+
+- 引擎是 [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) v2.0.1，模型是 `sherpa-onnx-streaming-zipformer-small-bilingual-zh-en-2023-02-16` 的 int8 版本（中文按字、英文按 BPE，一个模型同时识别中文、英语单词和数字）。
+- 运行库和模型都不打进 APK，家长在手机「语音」页点「下载到电视」时，从本仓库的预发布 [`offline-asr-1`](https://github.com/huhengbo/tv-study-helper/releases/tag/offline-asr-1) 下载约 48MB，和版本更新走同样的镜像。文件清单和 SHA-256 写在 `voice/LocalAsrPack.kt` 里，随签名的 APK 发布，下载的文件逐个核对。
+- 预发布里的文件由 `scripts/offline_asr_pack.sh` 生成：从 sherpa-onnx 官方发布下载运行库和模型，只取 int8 文件，由 `bpe.model` 导出热词要用的 `bpe.vocab`，逐个 gzip；可重复生成，结果逐字节一致。
+- 识别时把题目答案作为热词（`modified_beam_search`），提高孩子说单字、单词时的命中率；判分仍走本地的拼音、中文数字、英文归一化规则。
+- 录音时就把音频送去解码（边录边识别），松开语音键后只需解码结尾一小段。答题开始时提前加载模型，闲置 3 分钟后释放内存。
+- 小米电视 4A 实测：加载模型约 6.5 秒（在答题开场白期间完成）；解码约 0.8 倍实时，2 线程最快（4 线程反而慢一倍）；说完后约 0.6 秒出结果；App 内存约 85MB。孩子发音的识别准确率还需要更多实测，可在首页「语音诊断」里录一段后按方向键右核对。
+
 ## 结构
 
 ```
 tv/src/main/java/de/huyc/studyhelper/
 ├── core/    守护服务（计时、锁定）、无障碍服务、开机启动、暂停其他 App 播放、应用内授权（本机 adb 客户端）
 ├── quiz/    出题、判分（拼音/中文数字/英文归一化）、答题进度规则
-├── voice/   语音键识别、遥控器录音、百度/火山 ASR 与 TTS、朗读缓存、HTTP 与证书兼容
+├── voice/   语音键识别、遥控器录音、离线识别（sherpa-onnx）与离线语音包、百度/火山 ASR 与 TTS、朗读缓存、HTTP 与证书兼容
 ├── update/  检查新版本、镜像选择、下载核对与安装
 ├── ui/      首页、答题浮层、PIN 面板、主题与动效、表情图片渲染
 ├── web/     手机管理网页的 HTTP 接口（NanoHTTPD，端口 8848）
-└── diag/    语音诊断页（录音与回放，排查遥控器麦克风）
+└── diag/    语音诊断页（录音与回放、离线识别核对，排查遥控器麦克风）
+tv/src/main/java/com/k2fsa/sherpa/onnx/  sherpa-onnx 的 Kotlin 接口（原样摘录，JNI 按类名查找）
 tv/src/main/assets/web/    手机管理网页（原生 HTML/CSS/JS）
 tv/src/main/assets/packs/  内置题库包（与分享题库同一格式）
 tv/src/main/assets/emoji/  Noto 表情图片（Apache 2.0），电视系统字体没有彩色表情
-scripts/                   setup_tv.sh 用电脑安装与授权（备用）、check.sh 全部检查、version.sh 版本号与升级清单
+scripts/                   setup_tv.sh 用电脑安装与授权（备用）、check.sh 全部检查、version.sh 版本号与升级清单、offline_asr_pack.sh 生成离线语音包
 ```
 
 ## 题目模型与扩展
@@ -207,7 +218,7 @@ keyPassword=…
 ## 已知限制
 
 - 只在小米电视 4A 上验证过，见开头说明。
-- 语音识别依赖第三方在线服务，需要家长自己申请密钥；没网或没配置时只能用选择题。
+- 在线语音识别需要家长自己申请百度或火山的密钥；离线识别不需要，但准确率比在线服务低，孩子发音不清时更容易听错。
 - 首次安装需要在电视上打开「ADB 调试」，应用通过本机 adb 给自己授权；只在小米电视 4A 上验证过，不支持网络 adb 的机型需要用电脑运行 `scripts/setup_tv.sh`。
 - 系统没有 root 权限，更新时需要家长在电视上点一下「安装」，无法静默升级。
 
@@ -220,4 +231,5 @@ keyPassword=…
 - 代码：[Apache License 2.0](LICENSE)。
 - 内置题库（`tv/src/main/assets/packs/`）：[CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/deed.zh-hans)。
 - 表情图片（`tv/src/main/assets/emoji/`）来自 [Noto Emoji](https://github.com/googlefonts/noto-emoji)，Apache License 2.0。
+- 离线语音包（单独下载，不在 APK 里）：[sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx)（Apache-2.0，静态链接 [ONNX Runtime](https://github.com/microsoft/onnxruntime)，MIT），模型来自 k2-fsa/icefall（Apache-2.0）。`tv/src/main/java/com/k2fsa/sherpa/onnx/` 摘自 sherpa-onnx，Apache-2.0。
 - 依赖：[NanoHTTPD](https://github.com/NanoHttpd/nanohttpd)（BSD-3-Clause）、[ZXing](https://github.com/zxing/zxing)（Apache-2.0）、[pinyin4j](https://github.com/belerweb/pinyin4j)（BSD）、AndroidX（Apache-2.0）。

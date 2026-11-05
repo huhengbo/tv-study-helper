@@ -137,10 +137,24 @@
         <h3>🎙️ 语音识别（判断孩子的回答）</h3>
         <div class="seg" id="asrProvider">
           <button data-v="none">不使用</button>
+          <button data-v="offline">离线</button>
           <button data-v="baidu">百度智能云</button>
           <button data-v="volc">火山引擎</button>
         </div>
+        <p class="muted small" id="asrHint"></p>
+        <label class="switch-row" id="fallbackRow"><span>在线识别出错或电视没联网时，改用离线识别（需下载离线语音包）</span><input type="checkbox" id="asrOfflineFallback" class="switch"></label>
         <button class="btn block" id="testAsr">测试连接</button>
+      </div>
+
+      <div class="card" id="offlineCard">
+        <h3>📦 离线语音包</h3>
+        <p class="muted small">下载到电视上以后，不联网、不填密钥也能识别中文和英语，约 <span id="offlineSize">50</span> MB，下载一次就行。识别准确率比在线服务低一些。</p>
+        <div class="update-bar hidden" id="offlineBar"><i></i></div>
+        <p class="small" id="offlineMsg"></p>
+        <div class="row gap">
+          <button class="btn primary grow" id="offlineInstall">下载到电视</button>
+          <button class="btn grow hidden" id="offlineRemove">删除离线语音包</button>
+        </div>
       </div>
 
       <div class="card">
