@@ -13,6 +13,7 @@ import android.view.WindowManager
 import de.huyc.studyhelper.data.Store
 import de.huyc.studyhelper.quiz.AdaptiveMath
 import de.huyc.studyhelper.quiz.QuizMaker
+import de.huyc.studyhelper.quiz.QuizMode
 import de.huyc.studyhelper.quiz.ReviewWeights
 import de.huyc.studyhelper.ui.QuizActivity
 import de.huyc.studyhelper.ui.QuizView
@@ -41,32 +42,33 @@ class LockController(private val context: Context, private val store: Store, pri
         showQuiz()
     }
 
-    /** 显示答题界面。[preview] 为家长「试一试」：答完只关闭，不改动计时。 */
-    fun showQuiz(preview: Boolean = false) = main.post {
+    /** 显示答题界面。[mode] 见 [QuizMode]；只有 [QuizMode.GATE] 答完会解锁。 */
+    fun showQuiz(mode: QuizMode = QuizMode.GATE) = main.post {
         if (isShowingQuiz) return@post
         if (!Settings.canDrawOverlays(context)) {
             activityShowing = true
             context.startActivity(Intent(context, QuizActivity::class.java)
-                .putExtra(QuizActivity.EXTRA_PREVIEW, preview)
+                .putExtra(QuizActivity.EXTRA_MODE, mode.name)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP))
             return@post
         }
-        val view = newQuizView(context, preview) { removeQuizView() }
+        val view = newQuizView(context, mode) { removeQuizView() }
         quizView = view
         wm.addView(view, overlayParams(focusable = true))
         view.requestFocus()
         view.start()
     }
 
-    fun newQuizView(ctx: Context, preview: Boolean, close: () -> Unit): QuizView {
+    fun newQuizView(ctx: Context, mode: QuizMode, close: () -> Unit): QuizView {
         // 数学范围按近期正确率调整（未开启时就是家长设置的范围）
         val settings = store.settings.let { it.copy(math = AdaptiveMath.effective(it.math, store.mathLevel)) }
         val weights = if (settings.reviewWrong) ReviewWeights(store.logs(), System.currentTimeMillis())::weight else ReviewWeights.NONE
         // 多备几道，答错清零或换题时不重复
-        val items = QuizMaker(weight = weights).make(settings, store.activeQuestions, settings.questionCount * 3)
-        return QuizView(ctx, store, speaker, items, preview) { passed ->
+        val required = if (mode == QuizMode.STUDY) settings.studyQuestionCount else settings.questionCount
+        val items = QuizMaker(weight = weights).make(settings, store.activeQuestions, required * 3)
+        return QuizView(ctx, store, speaker, items, mode) { passed ->
             close()
-            if (!preview && passed) unlock()
+            if (mode == QuizMode.GATE && passed) unlock()
         }
     }
 

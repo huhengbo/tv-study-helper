@@ -27,6 +27,9 @@ object Emoji {
         available ?: (context.assets.list(DIR)?.map { it.substringBefore('.') }?.toSet() ?: emptySet()).also { available = it }
     }
 
+    /** 码位（如 "1f34c"）对应的表情文本。 */
+    fun text(code: String): String = String(Character.toChars(code.toInt(16)))
+
     /** 文本是单个可显示的表情时返回其码位（如 "1f34c"），否则 null。 */
     fun single(context: Context, text: String): String? {
         val cps = codePoints(text.trim()).filter { it != VS16 }

@@ -45,6 +45,10 @@
             android:launchMode="singleTask" />
 
         <activity
+            android:name=".ui.StickerBookActivity"
+            android:exported="false" />
+
+        <activity
             android:name=".ui.SetupActivity"
             android:exported="false" />
 

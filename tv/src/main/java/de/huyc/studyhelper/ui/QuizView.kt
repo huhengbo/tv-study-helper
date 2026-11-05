@@ -33,6 +33,8 @@ import de.huyc.studyhelper.quiz.QuizItem
 import de.huyc.studyhelper.quiz.QuizSession
 import de.huyc.studyhelper.voice.AsrProvider
 import de.huyc.studyhelper.voice.AsrSession
+import de.huyc.studyhelper.data.RoundReward
+import de.huyc.studyhelper.quiz.QuizMode
 import de.huyc.studyhelper.voice.Phrases
 import de.huyc.studyhelper.voice.Speaker
 import de.huyc.studyhelper.voice.VoiceKey
@@ -51,8 +53,8 @@ class QuizView(
     private val store: Store,
     private val speaker: Speaker,
     items: List<QuizItem>,
-    /** 家长「试一试」：按返回键可直接退出。 */
-    private val preview: Boolean,
+    /** 锁屏答题、家长试一试或孩子主动学习，见 [QuizMode]。 */
+    private val mode: QuizMode,
     private val onFinish: (passed: Boolean) -> Unit,
 ) : FrameLayout(context) {
 
@@ -60,7 +62,10 @@ class QuizView(
 
     private val settings = store.settings
     private val theme = Themes.get(settings.theme)
-    private val session = QuizSession(items, settings.questionCount, settings.wrongResets, settings.reviewWrong)
+    private val required = if (mode == QuizMode.STUDY) settings.studyQuestionCount else settings.questionCount
+    // 主动学习答错不清零，鼓励多试
+    private val session = QuizSession(items, required, settings.wrongResets && mode != QuizMode.STUDY, settings.reviewWrong)
+    private val greeting = if (mode == QuizMode.STUDY) Phrases.studyGreeting(required) else Phrases.greeting(required)
     private val asr: AsrProvider? = VoiceProviders.asr(context, settings.voice)
     private val tts = if (settings.voice.ttsEnabled) VoiceProviders.tts(context, settings.voice) else null
     private val recorder = VoiceRecorder(context)
@@ -125,7 +130,7 @@ class QuizView(
         mascot.background = pill(context, theme.card)
         mascot.elevation = context.dp(4f)
         header.addView(mascot, LinearLayout.LayoutParams(context.dp(76), context.dp(76)))
-        bubble.text = Phrases.greeting(session.required)
+        bubble.text = greeting
         bubble.setTextColor(theme.ink)
         bubble.typeface = BOLD
         bubble.setTextSize(TypedValue.COMPLEX_UNIT_SP, 20f)
@@ -193,7 +198,11 @@ class QuizView(
         root.addView(cardHolder, LinearLayout.LayoutParams(-1, 0, 1f).apply { topMargin = context.dp(18); bottomMargin = context.dp(10) })
 
         // 正式锁定时不提示家长入口（长按菜单键），避免孩子发现
-        footer.text = if (preview) "试一试模式：按返回键退出" else ""
+        footer.text = when (mode) {
+            QuizMode.GATE -> ""
+            QuizMode.PREVIEW -> "试一试模式：按返回键退出"
+            QuizMode.STUDY -> "按返回键可以退出，这一轮就不算啦"
+        }
         footer.setTextColor(withAlpha(theme.inkSoft, 0.7f))
         footer.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
         footer.gravity = Gravity.END
@@ -213,7 +222,7 @@ class QuizView(
         spring(card, DynamicAnimation.TRANSLATION_Y, 0f, SpringForce.STIFFNESS_LOW, 0.62f)
         bind(session.current)
         // 先说开场白，再读第一题
-        main.postDelayed({ if (!released) speaker.speak(tts, Phrases.greeting(session.required)) { readQuestion() } }, 450)
+        main.postDelayed({ if (!released) speaker.speak(tts, greeting) { readQuestion() } }, 450)
     }
 
     fun release() {
@@ -324,7 +333,7 @@ class QuizView(
         }
         if (event.action == KeyEvent.ACTION_DOWN) {
             when (event.keyCode) {
-                KeyEvent.KEYCODE_BACK -> { if (preview) finish(false) else wiggleMascot(); return true }
+                KeyEvent.KEYCODE_BACK -> { if (mode != QuizMode.GATE) finish(false) else wiggleMascot(); return true }
             }
         }
         if (choiceViews.isEmpty()) return true // 语音题不需要方向键，吞掉以免焦点跑掉
@@ -493,30 +502,43 @@ class QuizView(
 
     private fun allDone() {
         phase = Phase.DONE
-        if (!preview) {
-            store.recordRound(study = false)
-            store.adaptMath()
-        }
+        // 家长试一试不计轮数、不发奖励
+        val reward = if (mode == QuizMode.PREVIEW) null else store.completeRound(study = mode == QuizMode.STUDY).also { store.adaptMath() }
+        val sticker = reward?.draw
         main.postDelayed({
             if (released) return@postDelayed
-            prompt.text = ""
-            showDisplay("🎉")
+            prompt.text = sticker?.let { "抽到${it.rarity.label}贴纸" + if (it.isNew) "，新的！" else "" } ?: ""
+            showDisplay(sticker?.let { Emoji.text(it.code) } ?: "🎉")
             badge.animate().scaleX(0f).scaleY(0f).setDuration(200).start()
-            setStatus("全部答对，太棒啦！")
-            say("全部答对，太棒啦！可以继续看啦")
+            val (statusText, sayText, speakText) = doneTexts(reward)
+            setStatus(statusText)
+            say(sayText)
             voiceRow.visibility = VISIBLE
             choiceRow.visibility = GONE
             mic.visibility = INVISIBLE
             sfx.play(Sound.DONE)
-            speakAfterSfx(Phrases.ALL_DONE, DONE_SFX_MS)
+            if (sticker != null) main.postDelayed({ sfx.play(Sound.STICKER) }, STICKER_SFX_DELAY_MS)
+            speakAfterSfx(speakText, DONE_SFX_MS)
             confetti.burst(110)
             for (i in 0 until stars.childCount) {
                 stars.getChildAt(i).animate().translationY(-context.dp(14f)).setStartDelay(i * 90L).setDuration(180)
                     .withEndAction { stars.getChildAt(i).animate().translationY(0f).setStartDelay(0).setDuration(260).setInterpolator(OvershootInterpolator(3f)).start() }
                     .start()
             }
-            main.postDelayed({ finish(true) }, 2400)
+            main.postDelayed({ finish(true) }, if (sticker != null) 3400 else 2400)
         }, 900)
+    }
+
+    /** 通关后显示的状态文字、气泡文字和朗读内容。 */
+    private fun doneTexts(reward: RoundReward?): Triple<String, String, String> {
+        if (mode != QuizMode.STUDY) return Triple("全部答对，太棒啦！", "全部答对，太棒啦！可以继续看啦", Phrases.ALL_DONE)
+        val extra = when {
+            reward == null -> ""
+            reward.minutes > 0 -> "，多了 ${reward.minutes} 分钟观看时间"
+            reward.capReached -> "，今天的加时已经攒满啦"
+            else -> ""
+        }
+        return Triple("学习完成，太棒啦！" + extra, "学习完成，太棒啦！" + extra, Phrases.STUDY_DONE)
     }
 
     private fun finish(passed: Boolean) {
@@ -602,5 +624,7 @@ class QuizView(
         /** 答对、答错音效的长度，朗读等音效播完再开口。 */
         private const val SFX_MS = 400L
         private const val DONE_SFX_MS = 900L
+        /** 通关号角响完后再放抽到贴纸的音效。 */
+        private const val STICKER_SFX_DELAY_MS = 1100L
     }
 }

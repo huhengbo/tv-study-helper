@@ -25,6 +25,7 @@ import de.huyc.studyhelper.data.Store
 import de.huyc.studyhelper.data.VoiceConfig
 import de.huyc.studyhelper.data.strings
 import de.huyc.studyhelper.quiz.AnswerMatcher
+import de.huyc.studyhelper.quiz.QuizMode
 import de.huyc.studyhelper.ui.Emoji
 import de.huyc.studyhelper.ui.Themes
 import de.huyc.studyhelper.voice.LocalAsr
@@ -120,7 +121,7 @@ class AdminServer(private val context: Context, private val store: Store) : Nano
                 if (paused && store.locked) app.lock.unlock()
                 ok(JSONObject())
             }
-            "POST preview" -> { app.lock.showQuiz(preview = true); ok(JSONObject()) }
+            "POST preview" -> { app.lock.showQuiz(QuizMode.PREVIEW); ok(JSONObject()) }
             "GET update" -> ok(update(session.parameters["refresh"]?.firstOrNull() == "1"))
             "POST update/install" -> { app.updater.start(store.locked); ok(app.updater.status.toJson()) }
             "GET update/status" -> ok(app.updater.status.toJson())

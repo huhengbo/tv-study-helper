@@ -97,6 +97,8 @@ class GuardService : Service() {
     private fun isCounting(): Boolean {
         val power = getSystemService(Context.POWER_SERVICE) as PowerManager
         if (!power.isInteractive) return false
+        // 孩子在答题（含主动学习）时不计时，否则答题中途可能被锁屏打断
+        if (app.lock.isShowingQuiz) return false
         val settings = app.store.settings
         if (settings.countMode == CountMode.ALL) return true
         val pkg = ForegroundTracker.current(this) ?: return false

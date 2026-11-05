@@ -20,13 +20,16 @@ import android.widget.TextView
 import de.huyc.studyhelper.App
 import de.huyc.studyhelper.BuildConfig
 import de.huyc.studyhelper.core.Permissions
+import de.huyc.studyhelper.data.DailyStats
+import de.huyc.studyhelper.data.StickerCatalog
+import de.huyc.studyhelper.quiz.QuizMode
 import de.huyc.studyhelper.core.GuardService
 import de.huyc.studyhelper.diag.VoiceDiagActivity
 import de.huyc.studyhelper.web.AdminServer
 import de.huyc.studyhelper.web.Net
 import kotlin.math.min
 
-/** 电视端首页：剩余时间、手机管理二维码、试一试答题、暂停守护、语音诊断、权限状态。 */
+/** 电视端首页：剩余时间、开始学习、我的贴纸、手机管理二维码、试一试答题、暂停守护、语音诊断、权限状态。 */
 class MainActivity : Activity() {
     private val app get() = App.instance
     private val theme get() = Themes.get(app.store.settings.theme)
@@ -36,6 +39,10 @@ class MainActivity : Activity() {
     private lateinit var statusChip: TextView
     private lateinit var summary: TextView
     private lateinit var pauseButton: TextView
+    private lateinit var studyButton: TextView
+    private lateinit var stickerButton: TextView
+    private var ticks = 0
+    private var answeredToday = 0
     private lateinit var setupButton: TextView
     private lateinit var setupRow: LinearLayout
     private lateinit var perms: TextView
@@ -78,7 +85,7 @@ class MainActivity : Activity() {
         }, LinearLayout.LayoutParams(dp(84), dp(84)))
         val titles = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(18), 0, 0, 0) }
         titles.addView(text("学习小助手", 38f, theme.ink, bold = true))
-        titles.addView(text("看电视也能学知识，答对题目继续看", 17f, theme.inkSoft))
+        titles.addView(text("每天学一点，看电视的时间也能攒出来", 17f, theme.inkSoft))
         titleRow.addView(titles)
         left.addView(titleRow)
 
@@ -99,16 +106,26 @@ class MainActivity : Activity() {
         statusCard.addView(info)
         left.addView(statusCard, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(20) })
 
-        // 操作按钮
+        // 孩子用的按钮：主动学习、贴纸册
+        val kidButtons = LinearLayout(this).apply {
+            clipChildren = false; clipToPadding = false; setPadding(dp(8), dp(10), dp(8), dp(4))
+        }
+        studyButton = button("📚  开始学习") { app.lock.showQuiz(QuizMode.STUDY) }
+        stickerButton = button("🌟  我的贴纸") { startActivity(Intent(this, StickerBookActivity::class.java)) }
+        kidButtons.addView(studyButton)
+        kidButtons.addView(stickerButton)
+        left.addView(kidButtons, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(10); leftMargin = -dp(8) })
+
+        // 家长用的按钮
         val buttons = LinearLayout(this).apply {
             // 按钮获得焦点时会放大并带投影，不能被父布局裁掉
             clipChildren = false; clipToPadding = false; setPadding(dp(8), dp(10), dp(8), dp(14))
         }
-        buttons.addView(button("✏️  试一试答题") { app.lock.showQuiz(preview = true) })
+        buttons.addView(button("✏️  试一试答题") { app.lock.showQuiz(QuizMode.PREVIEW) })
         pauseButton = button("") { askParent() }
         buttons.addView(pauseButton)
         buttons.addView(button("🎤  语音诊断") { startActivity(Intent(this, VoiceDiagActivity::class.java)) })
-        left.addView(buttons, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(16); leftMargin = -dp(8) })
+        left.addView(buttons, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(2); leftMargin = -dp(8) })
         // 四个按钮一行放不下，开启权限单独一行，权限齐全时隐藏
         setupButton = button("🔧  开启权限") { startActivity(Intent(this, SetupActivity::class.java)) }
         setupRow = LinearLayout(this).apply {
@@ -146,7 +163,7 @@ class MainActivity : Activity() {
         qr.setImageBitmap(link?.let { qrBitmap(it, dp(210), theme.ink) })
         handler.post(refresher)
         (root.getChildAt(1) as? LinearLayout)?.let { entrance(it) }
-        root.post { pauseButton.parent?.let { (it as LinearLayout).getChildAt(0).requestFocus() } }
+        root.post { studyButton.requestFocus() }
     }
 
     override fun onPause() {
@@ -169,8 +186,14 @@ class MainActivity : Activity() {
         statusChip.text = label
         statusChip.background = pill(this, color)
         val s = store.settings
+        // 统计和贴纸要读文件，不必每秒都读
+        if (ticks++ % 5 == 0) {
+            stickerButton.setEmojiText("🌟  我的贴纸 ${store.rewards().stickers.size}/${StickerCatalog.total}")
+            answeredToday = store.daily()[DailyStats.dayKey(System.currentTimeMillis())]?.answered ?: 0
+        }
         summary.text = "每次可看 ${s.watchMinutes} 分钟\n到时间后答对 ${s.questionCount} 道题继续看\n" +
-            if (s.countMode.name == "ALL") "所有画面都计时" else "只在 ${s.apps.size} 个指定 App 里计时"
+            (if (s.countMode.name == "ALL") "所有画面都计时" else "只在 ${s.apps.size} 个指定 App 里计时") +
+            "\n今天已答 $answeredToday 道题"
         pauseButton.setEmojiText(if (store.paused) "▶️  恢复守护" else "⏸️  暂停守护")
         val p = Permissions.status(this)
         setupRow.visibility = if (p.allGranted) View.GONE else View.VISIBLE

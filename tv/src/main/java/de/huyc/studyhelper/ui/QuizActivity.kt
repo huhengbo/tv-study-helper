@@ -4,6 +4,7 @@ import android.app.Activity
 import android.os.Bundle
 import android.view.KeyEvent
 import de.huyc.studyhelper.App
+import de.huyc.studyhelper.quiz.QuizMode
 
 /** 没有悬浮窗权限时的退路：用全屏 Activity 承载答题界面。 */
 class QuizActivity : Activity() {
@@ -11,8 +12,8 @@ class QuizActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val preview = intent.getBooleanExtra(EXTRA_PREVIEW, false)
-        val view = App.instance.lock.newQuizView(this, preview) { finish() }
+        val mode = runCatching { QuizMode.valueOf(intent.getStringExtra(EXTRA_MODE).orEmpty()) }.getOrDefault(QuizMode.GATE)
+        val view = App.instance.lock.newQuizView(this, mode) { finish() }
         quiz = view
         setContentView(view)
         view.requestFocus()
@@ -34,6 +35,6 @@ class QuizActivity : Activity() {
     }
 
     companion object {
-        const val EXTRA_PREVIEW = "preview"
+        const val EXTRA_MODE = "mode"
     }
 }

@@ -201,6 +201,11 @@ data class Settings(
     val reviewWrong: Boolean = true,
     /** 答对、答错、通关的短音效。 */
     val soundEffects: Boolean = true,
+    /** 孩子主动学习一轮需要答对的题数。 */
+    val studyQuestionCount: Int = 5,
+    /** 主动学习通过一轮得到的加时（分钟），0 表示不加时；每天累计不超过 [rewardDailyCapMinutes]。 */
+    val rewardMinutesPerRound: Int = 5,
+    val rewardDailyCapMinutes: Int = 15,
     val autoStart: Boolean = true,
     val pin: String = "1234",
     /** 允许在电视上用方向键输密码（孩子可能看到），默认只能手机扫码验证。 */
@@ -225,6 +230,9 @@ data class Settings(
         .put("wrongResets", wrongResets)
         .put("reviewWrong", reviewWrong)
         .put("soundEffects", soundEffects)
+        .put("studyQuestionCount", studyQuestionCount)
+        .put("rewardMinutesPerRound", rewardMinutesPerRound)
+        .put("rewardDailyCapMinutes", rewardDailyCapMinutes)
         .put("autoStart", autoStart)
         .put("pin", if (maskSecrets) "" else pin)
         .put("tvPinUnlock", tvPinUnlock)
@@ -246,6 +254,9 @@ data class Settings(
         wrongResets = o.optBoolean("wrongResets", wrongResets),
         reviewWrong = o.optBoolean("reviewWrong", reviewWrong),
         soundEffects = o.optBoolean("soundEffects", soundEffects),
+        studyQuestionCount = o.optInt("studyQuestionCount", studyQuestionCount).coerceIn(1, 20),
+        rewardMinutesPerRound = o.optInt("rewardMinutesPerRound", rewardMinutesPerRound).coerceIn(0, 60),
+        rewardDailyCapMinutes = o.optInt("rewardDailyCapMinutes", rewardDailyCapMinutes).coerceIn(0, 240),
         autoStart = o.optBoolean("autoStart", autoStart),
         tvPinUnlock = o.optBoolean("tvPinUnlock", tvPinUnlock),
         pin = o.optString("pin", "").trim().takeIf { it.matches(Regex("\\d{4,8}")) } ?: pin,

@@ -8,7 +8,7 @@ import kotlin.math.exp
 import kotlin.math.sin
 
 /** 答题用的短音效。没有音频资源文件，音色由 [SfxSynth] 合成，免版权也不占 APK 体积。 */
-enum class Sound { CORRECT, WRONG, DONE }
+enum class Sound { CORRECT, WRONG, DONE, STICKER }
 
 /**
  * 播放 [Sound]。每个音效一个静态 [AudioTrack]，用到时才合成；走媒体音量，和朗读同一个流。
@@ -53,6 +53,8 @@ object SfxSynth {
     private const val E5 = 659.25
     private const val G5 = 783.99
     private const val C6 = 1046.5
+    private const val E6 = 1318.5
+    private const val G6 = 1568.0
     private const val A3 = 220.0
     private const val F3 = 174.61
 
@@ -60,6 +62,7 @@ object SfxSynth {
         Sound.CORRECT -> listOf(Note(C5, 0, 220), Note(E5, 90, 220), Note(G5, 180, 320))
         Sound.WRONG -> listOf(Note(A3, 0, 200, 0.4), Note(F3, 140, 280, 0.4))
         Sound.DONE -> listOf(Note(C5, 0, 260), Note(E5, 140, 260), Note(G5, 280, 260), Note(C6, 440, 520, 0.55))
+        Sound.STICKER -> listOf(Note(G5, 0, 180, 0.4), Note(C6, 90, 180, 0.4), Note(E6, 180, 180, 0.4), Note(G6, 270, 420, 0.45))
     }
 
     fun render(sound: Sound): ShortArray {

@@ -9,6 +9,7 @@ import org.json.JSONObject
 import java.io.File
 import java.util.UUID
 import java.util.concurrent.CopyOnWriteArrayList
+import kotlin.random.Random
 
 /**
  * 设置、题库、作答记录的本地持久化。设置是 JSON 文件，题库每个包一个文件（packs/<id>.json），
@@ -22,6 +23,7 @@ class Store(context: Context) {
     private val packDir = File(dir, "packs")
     private val logFile = File(dir, "answers.json")
     private val dailyFile = File(dir, "daily.json")
+    private val rewardsFile = File(dir, "rewards.json")
     private val prefs: SharedPreferences = app.getSharedPreferences("state", Context.MODE_PRIVATE)
     private val listeners = CopyOnWriteArrayList<() -> Unit>()
 
@@ -224,6 +226,25 @@ class Store(context: Context) {
     @Synchronized
     fun recordRound(study: Boolean, time: Long = System.currentTimeMillis()) =
         saveDaily(DailyStats.recordRound(daily(), study, time))
+
+    /** 贴纸收集和今天已得的加时。 */
+    fun rewards(): RewardState = load(rewardsFile)
+        ?.let { runCatching { RewardState.fromJson(JSONObject(it)) }.getOrNull() }
+        ?: RewardState()
+
+    /**
+     * 一轮答题通过：记入统计，抽一张贴纸；主动学习（[study]）且守护没暂停、当前没锁定时再加时。
+     * 加时直接加到本轮的 [bonusSeconds]，下次解锁时清零，和家长在手机上加时是同一个机制。
+     */
+    @Synchronized
+    fun completeRound(study: Boolean, random: Random = Random.Default, time: Long = System.currentTimeMillis()): RoundReward {
+        recordRound(study, time)
+        val s = settings
+        val reward = RewardRules.complete(rewards(), study && !paused && !locked, s.rewardMinutesPerRound, s.rewardDailyCapMinutes, time, random)
+        save(rewardsFile, reward.state.toJson().toString())
+        if (reward.minutes > 0) bonusSeconds += reward.minutes * 60
+        return reward
+    }
 
     private fun saveDaily(stats: Map<String, DayStats>) = save(dailyFile, DailyStats.toJson(stats).toString())
 

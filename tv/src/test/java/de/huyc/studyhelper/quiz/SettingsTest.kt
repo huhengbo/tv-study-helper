@@ -57,4 +57,11 @@ class MigrationTest {
         val s = Settings(reviewWrong = false, soundEffects = false, math = MathConfig(adaptive = true))
         assertEquals(s, Settings.fromJson(JSONObject(s.toJson().toString())))
     }
+
+    @Test fun rewardSettingsHaveDefaultsAndAreClamped() {
+        val d = Settings.fromJson(JSONObject())
+        assertEquals(5, d.studyQuestionCount); assertEquals(5, d.rewardMinutesPerRound); assertEquals(15, d.rewardDailyCapMinutes)
+        val m = Settings().merge(JSONObject().put("studyQuestionCount", 0).put("rewardMinutesPerRound", 999).put("rewardDailyCapMinutes", -3))
+        assertEquals(1, m.studyQuestionCount); assertEquals(60, m.rewardMinutesPerRound); assertEquals(0, m.rewardDailyCapMinutes)
+    }
 }
