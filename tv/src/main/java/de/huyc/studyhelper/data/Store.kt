@@ -105,6 +105,7 @@ class Store(context: Context) {
             prefs.edit().putStringSet(KEY_REMOVED_BUILTINS, prefs.getStringSet(KEY_REMOVED_BUILTINS, emptySet()).orEmpty() + id).apply()
         }
         setPacks(packs.filterNot { it.id == id })
+        if (p.sheets.isNotEmpty()) SpriteCache.prune(app, this)
     }
 
     /** 只开这一个包，其余全部关掉。 */
@@ -134,6 +135,8 @@ class Store(context: Context) {
         require(old == null || !old.editable) { "电视上已有这个题库（自己建的），不需要再导入" }
         val fresh = incoming.copy(source = source, sourceUrl = url, installedAt = System.currentTimeMillis())
         savePack(if (old != null) fresh.upgradedFrom(old) else fresh)
+        // 图在后台下载，失败了下次答题前重试；没有图的新版本也要清理旧版本的图
+        if (fresh.sheets.isNotEmpty() || old?.sheets?.isNotEmpty() == true) SpriteCache.prefetch(app, this, setOf(fresh.id))
         return if (old == null) InstallResult.NEW else InstallResult.UPDATED
     }
 

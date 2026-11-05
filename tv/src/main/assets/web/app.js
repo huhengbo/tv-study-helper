@@ -640,9 +640,16 @@ $('#packFile').onchange = async e => {
   try { pack = JSON.parse(await f.text()); } catch (_) { toast('这个文件不是题库文件', true); return; }
   const r = await run(() => api('pack/upload', { method: 'POST', body: pack }));
   if (!r) return;
-  toast(`${r.updated ? '已更新' : '已添加'}「${r.name}」，共 ${r.count} 道题` + (r.skipped ? `（${r.skipped} 道电视上用不了，已跳过）` : ''));
+  toast(`${r.updated ? '已更新' : '已添加'}「${r.name}」，共 ${r.count} 道题` + (r.skipped ? `（${r.skipped} 道电视上用不了，已跳过）` : '') + spriteNote(r));
   loadPacks();
 };
+
+// 精灵图在电视后台下载；有问题的题保留，只是显示备用画面
+function spriteNote(r) {
+  const w = r.warnings || [];
+  if (w.length) console.warn('题库精灵图问题：\n' + w.join('\n'));
+  return (r.sheets ? '，图片在电视后台下载' : '') + (w.length ? `（${w.length} 处精灵图有问题，那些题显示备用画面：${w[0]}${w.length > 1 ? ' 等' : ''}）` : '');
+}
 
 async function sharedPacks() {
   openSheet('分享题库', '<p class="muted small center">正在加载…</p>', null);
@@ -661,7 +668,7 @@ async function sharedPacks() {
     const res = await run(() => api('shared/install', { method: 'POST', body: { id: b.closest('li').dataset.id } }));
     if (!res) { b.disabled = false; b.textContent = '重试'; return; }
     b.textContent = '已添加'; b.classList.remove('primary');
-    toast(`${res.updated ? '已更新' : '已添加'}「${res.name}」，共 ${res.count} 道题`);
+    toast(`${res.updated ? '已更新' : '已添加'}「${res.name}」，共 ${res.count} 道题` + spriteNote(res));
     loadPacks();
   });
 }
@@ -680,7 +687,7 @@ function renderQuestions() {
   $('#bankList').innerHTML = list.slice(0, 300).map((q, i) => `
     <li class="${q.enabled ? '' : 'disabled'}" style="animation-delay:${Math.min(i, 12) * 25}ms" data-id="${esc(q.id)}">
       <span class="q-face ${[...q.display].length > 3 ? 'long' : ''}">${emo(esc(q.display))}</span>
-      <span class="q-main"><b>${esc(q.prompt)}</b><small><span class="tag ${q.subject}">${SUBJECTS[q.subject]}</span>${q.mode === 'CHOICE' ? '<span class="tag mode">选择</span>' : ''}答案：${esc(q.answers.join(' / '))}</small></span>
+      <span class="q-main"><b>${esc(q.prompt)}</b><small><span class="tag ${q.subject}">${SUBJECTS[q.subject]}</span>${q.mode === 'CHOICE' ? '<span class="tag mode">选择</span>' : ''}${q.sprite ? `<span class="tag mode">${q.sprite.frames > 1 ? '动画' : '图片'}</span>` : ''}答案：${esc(q.answers.join(' / '))}</small></span>
       <span class="q-ops">
         <button class="icon-btn" data-op="toggle" title="启用/停用">${emo(q.enabled ? '👁️' : '🚫')}</button>
         ${p.editable ? `<button class="icon-btn" data-op="edit" title="编辑">${emo('✏️')}</button>

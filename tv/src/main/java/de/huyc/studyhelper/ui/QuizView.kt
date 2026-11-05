@@ -5,6 +5,7 @@ import android.animation.ValueAnimator
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Color
+import android.graphics.drawable.Animatable
 import android.os.Handler
 import android.os.Looper
 import android.text.TextUtils
@@ -26,6 +27,8 @@ import androidx.dynamicanimation.animation.SpringForce
 import de.huyc.studyhelper.data.AnswerLog
 import de.huyc.studyhelper.data.VoiceConfig
 import de.huyc.studyhelper.data.AnswerMode
+import de.huyc.studyhelper.data.Question
+import de.huyc.studyhelper.data.SpriteCache
 import de.huyc.studyhelper.data.Subject
 import de.huyc.studyhelper.data.Store
 import de.huyc.studyhelper.quiz.AnswerMatcher
@@ -76,6 +79,7 @@ class QuizView(
     private val main = Handler(Looper.getMainLooper())
     private var phase = Phase.INTRO
     private var released = false
+    private var spriteToken = 0
     private var gate: ParentGate? = null
     private val menuPresses = mutableListOf<Long>()
     private var choiceViews: List<TextView> = emptyList()
@@ -112,6 +116,8 @@ class QuizView(
         addView(confetti, LayoutParams(-1, -1))
         // 本轮的题（含随机生成的数学题）和固定用语，提前合成
         speaker.warmUp(tts, Phrases.all(settings) + items.map { it.question.speakText })
+        // 之前没下载成功的精灵图在这里重试；后台进行，这一轮没下好的题先显示 display
+        SpriteCache.prefetch(context, store)
         asr?.let { worker.execute { runCatching { it.prepare() }.onFailure { e -> Log.w(TAG, "语音识别准备失败", e) } } }
     }
 
@@ -232,6 +238,7 @@ class QuizView(
         speaker.stop()
         sfx.release()
         mascotBob.cancel()
+        stopSprite()
         main.removeCallbacksAndMessages(null)
         worker.shutdownNow()
     }
@@ -246,7 +253,7 @@ class QuizView(
             else -> 52f
         }
         display.setTextSize(TypedValue.COMPLEX_UNIT_SP, size)
-        showDisplay(q.display)
+        showQuestion(q)
         badge.visibility = INVISIBLE
         when (item.mode) {
             AnswerMode.VOICE -> showVoice()
@@ -564,20 +571,57 @@ class QuizView(
 
     // ---- 小工具 ----
 
+    /** 题目有精灵图且图可用就显示精灵图（动画则循环播放），否则显示 display。图还没解码好时先显示 display，好了再换。 */
+    private fun showQuestion(q: Question) {
+        val ref = q.sprite
+        val sheet = ref?.spec
+        val ready = ref?.let(Sprites::cached)
+        if (ready != null) {
+            stopSprite()
+            showSprite(ready)
+            return
+        }
+        showDisplay(q.display)
+        if (ref == null || sheet == null || !SpriteCache.has(context, sheet)) return
+        val token = spriteToken
+        Sprites.load(context, ref, context.dp(170)) { if (!released && token == spriteToken) showSprite(it, replay = displayImage.visibility != VISIBLE) }
+    }
+
+    /** [replay] 为 false 时是换掉已经显示着的备用表情，不重播弹出动画。 */
+    private fun showSprite(d: SpriteDrawable, replay: Boolean = true) {
+        display.visibility = INVISIBLE
+        displayImage.visibility = VISIBLE
+        displayImage.setImageDrawable(d)
+        if (replay) popIn()
+        d.start()
+    }
+
+    /** 停掉正在播放的精灵图动画，并让还没回来的解码结果作废。 */
+    private fun stopSprite() {
+        spriteToken++
+        (displayImage.drawable as? Animatable)?.stop()
+    }
+
     /** 单个表情用图片显示（电视没有彩色表情字体），其余按文字显示。 */
     private fun showDisplay(text: String) {
+        stopSprite()
         val emoji = Emoji.single(context, text)
         if (emoji != null) {
             display.visibility = INVISIBLE
             displayImage.visibility = VISIBLE
             displayImage.setImageBitmap(Emoji.bitmap(context, emoji))
-            displayImage.scaleX = 0.4f; displayImage.scaleY = 0.4f
-            displayImage.animate().scaleX(1f).scaleY(1f).setInterpolator(OvershootInterpolator(2.4f)).setDuration(420).start()
+            popIn()
         } else {
             displayImage.visibility = GONE
             display.visibility = VISIBLE
             display.setEmojiText(text)
         }
+    }
+
+    /** 图片从小弹到原大小。 */
+    private fun popIn() {
+        displayImage.scaleX = 0.4f; displayImage.scaleY = 0.4f
+        displayImage.animate().scaleX(1f).scaleY(1f).setInterpolator(OvershootInterpolator(2.4f)).setDuration(420).start()
     }
 
     private fun setStatus(text: String, warn: Boolean = false, thinking: Boolean = false) {

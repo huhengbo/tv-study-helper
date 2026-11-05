@@ -2,6 +2,7 @@ package de.huyc.studyhelper.data
 
 import org.json.JSONArray
 import org.json.JSONObject
+import java.security.MessageDigest
 
 /**
  * 科目：决定题目内容怎么理解、语音答案怎么判分（见 quiz/Judges）。
@@ -35,6 +36,7 @@ enum class AnswerMode(val label: String) {
  * - [answers]：语音题为可接受的答案（认字按读音、数学按数值、英语忽略大小写）；选择题第一项为正确选项
  * - [choices]：选择题的全部选项（含正确项），出题时打乱顺序
  * - [speak]：朗读文本，空时朗读 [prompt]
+ * - [sprite]：可选的精灵图（静态一格或逐帧动画）；[display] 仍必填，图没下载或损坏时显示它
  */
 data class Question(
     val id: String,
@@ -46,6 +48,7 @@ data class Question(
     val choices: List<String> = emptyList(),
     val speak: String = "",
     val enabled: Boolean = true,
+    val sprite: SpriteRef? = null,
 ) {
     val speakText: String get() = speak.ifBlank { prompt }
 
@@ -62,6 +65,7 @@ data class Question(
         .put("choices", JSONArray(choices))
         .put("speak", speak)
         .put("enabled", enabled)
+        .apply { sprite?.let { put("sprite", it.toJson()) } }
 
     /** 题库包文件里的写法：省略默认值，便于手写和审阅。 */
     fun toPackJson(): JSONObject = JSONObject().apply {
@@ -73,6 +77,7 @@ data class Question(
         put("answers", JSONArray(answers))
         if (choices.isNotEmpty()) put("choices", JSONArray(choices))
         if (speak.isNotBlank()) put("speak", speak)
+        sprite?.let { put("sprite", it.toJson()) }
     }
 
     companion object {
@@ -95,7 +100,67 @@ data class Question(
             choices = o.optJSONArray("choices").strings(),
             speak = o.optString("speak"),
             enabled = o.optBoolean("enabled", true),
+            sprite = o.optJSONObject("sprite")?.let(SpriteRef::fromJson),
         )
+    }
+}
+
+/**
+ * 题库包头 `sheets` 里的一张精灵图：[cols] × [rows] 个大小相同的格子。
+ * [url] 在包里可以是相对包文件的路径，安装时解析成绝对地址保存。
+ * [bytes] 是文件大小上限（0 表示用默认上限），[sha256] 可选，填了就校验下载内容。
+ */
+data class SpriteSheet(val url: String, val cols: Int, val rows: Int, val bytes: Int = 0, val sha256: String = "") {
+    val cells: Int get() = cols * rows
+
+    /** 缓存文件名：同一地址、同一内容共用一份，不随包 id 和版本变。 */
+    val cacheKey: String get() = MessageDigest.getInstance("SHA-1")
+        .digest("$url|${sha256.lowercase()}".toByteArray()).joinToString("") { "%02x".format(it) }
+
+    fun toJson(): JSONObject = JSONObject().put("url", url).put("cols", cols).put("rows", rows).apply {
+        if (bytes > 0) put("bytes", bytes)
+        if (sha256.isNotEmpty()) put("sha256", sha256)
+    }
+
+    companion object {
+        const val MAX_GRID = 16
+        const val MAX_BYTES = 2 * 1024 * 1024
+        private val SHA256_RE = Regex("[0-9a-fA-F]{64}")
+
+        /** 字段不合法返回 null。 */
+        fun fromJson(o: JSONObject): SpriteSheet? {
+            val url = o.optString("url").trim()
+            val cols = o.optInt("cols")
+            val rows = o.optInt("rows")
+            val bytes = o.optInt("bytes")
+            val sha = o.optString("sha256").trim()
+            if (url.isEmpty() || cols !in 1..MAX_GRID || rows !in 1..MAX_GRID || bytes !in 0..MAX_BYTES) return null
+            if (sha.isNotEmpty() && !SHA256_RE.matches(sha)) return null
+            return SpriteSheet(url, cols, rows, bytes, sha)
+        }
+    }
+}
+
+/**
+ * 题目用的精灵图：[sheet] 是包头 `sheets` 里的编号，[cell] 从 0 开始、从左到右从上到下数。
+ * [frames] 大于 1 时从 [cell] 起连续取 [frames] 格循环播放，每秒 [fps] 帧。
+ * [spec] 是运行时从所属题库包带上的图信息，不写入文件。
+ */
+data class SpriteRef(val sheet: String, val cell: Int, val frames: Int = 1, val fps: Int = DEFAULT_FPS, val spec: SpriteSheet? = null) {
+    fun toJson(): JSONObject = JSONObject().put("sheet", sheet).put("cell", cell).apply {
+        if (frames != 1) put("frames", frames)
+        if (fps != DEFAULT_FPS) put("fps", fps)
+    }
+
+    companion object {
+        const val DEFAULT_FPS = 6
+        const val MAX_FPS = 15
+        const val MAX_FRAMES = 64
+
+        fun fromJson(o: JSONObject): SpriteRef? {
+            val sheet = o.optString("sheet").trim().ifEmpty { return null }
+            return SpriteRef(sheet, o.optInt("cell", -1), o.optInt("frames", 1), o.optInt("fps", DEFAULT_FPS).coerceIn(1, MAX_FPS))
+        }
     }
 }
 

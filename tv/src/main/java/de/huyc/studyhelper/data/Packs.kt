@@ -2,6 +2,7 @@ package de.huyc.studyhelper.data
 
 import org.json.JSONArray
 import org.json.JSONObject
+import java.net.URL
 import java.util.UUID
 
 /** 题库包从哪来。只有 [LOCAL]（家长自建）可以改题目，其余只读，但可以停用其中的题或复制一份再改。 */
@@ -27,6 +28,8 @@ data class QuestionPack(
     val tags: List<String> = emptyList(),
     val version: Int = 1,
     val questions: List<Question> = emptyList(),
+    /** 精灵图，编号对应 [SpriteRef.sheet]；[SpriteSheet.url] 已解析成绝对地址。 */
+    val sheets: Map<String, SpriteSheet> = emptyMap(),
     // 以下为电视本地状态，导出时不写入
     val source: PackSource = PackSource.LOCAL,
     val sourceUrl: String = "",
@@ -56,6 +59,7 @@ data class QuestionPack(
         .put("author", author)
         .put("license", license)
         .put("tags", JSONArray(tags))
+        .apply { if (sheets.isNotEmpty()) put("sheets", JSONObject().also { o -> sheets.forEach { (k, v) -> o.put(k, v.toJson()) } }) }
 
     /**
      * 用新版本内容替换旧包：保留开关、来源和家长停用的题（按题目 id 对应）。
@@ -88,7 +92,7 @@ data class QuestionPack(
             return parsed.copy(
                 questions = o.optJSONArray("questions")?.let { a ->
                     (0 until a.length()).mapNotNull { Question.fromJsonOrNull(a.getJSONObject(it)) }
-                } ?: emptyList(),
+                }.orEmpty().let { PackFormat.stripBadSprites(it, parsed.sheets) },
                 source = enumOr(local.optString("source"), PackSource.LOCAL),
                 sourceUrl = local.optString("sourceUrl"),
                 enabled = local.optBoolean("enabled", true),
@@ -105,6 +109,9 @@ data class QuestionPack(
  *   "name": "…", "icon": "📘", "description": "…", "author": "…", "license": "CC-BY-SA-4.0", "tags": ["一年级"],
  *   "questions": [ { "id": "u1-1", "subject": "HANZI", "display": "天", "answers": ["天"] }, … ] }
  * ```
+ * 可选精灵图：包头 `"sheets": { "s1": { "url": "../sheets/a.webp", "cols": 5, "rows": 4 } }`，
+ * 题目 `"sprite": { "sheet": "s1", "cell": 0, "frames": 4, "fps": 6 }`（frames 默认 1，fps 默认 6）。
+ * 精灵图有问题时题目保留、去掉 sprite（显示 display），并在 [Parsed.warnings] 里说明。
  * 题目字段同 [Question.toPackJson]：mode 默认 VOICE，prompt 默认用科目的默认题目文字。
  * 不认识的字段忽略；不认识的科目或作答方式跳过该题（新版本才支持的题型）。
  */
@@ -113,12 +120,15 @@ object PackFormat {
     const val VERSION = 1
     private val ID_RE = Regex("[a-z0-9][a-z0-9._-]{1,63}")
 
-    class Parsed(val pack: QuestionPack, val skipped: Int)
+    class Parsed(val pack: QuestionPack, val skipped: Int, val warnings: List<String> = emptyList())
 
     class InvalidPack(message: String) : IllegalArgumentException(message)
 
-    /** [strict] 用于导入外部文件：检查格式标记和每道题是否完整；本地文件只做宽松读取。 */
-    fun parse(o: JSONObject, strict: Boolean = true): Parsed {
+    /**
+     * [strict] 用于导入外部文件：检查格式标记和每道题是否完整；本地文件只做宽松读取。
+     * [baseUrl] 是包文件的地址，用来解析精灵图的相对路径；没有时（文件导入）精灵图只能写绝对的 https 地址。
+     */
+    fun parse(o: JSONObject, strict: Boolean = true, baseUrl: String? = null): Parsed {
         if (strict) {
             if (o.optString("format") != FORMAT) throw InvalidPack("这不是学习小助手的题库文件")
             if (o.optInt("formatVersion", 1) > VERSION) throw InvalidPack("这个题库需要更新版本的学习小助手")
@@ -138,6 +148,8 @@ object PackFormat {
             list.mapIndexed { i, q -> if (q.id.isBlank() || !seen.add(q.id)) q.copy(id = "q$i").also { seen += it.id } else q }
         }
         if (strict && questions.isEmpty()) throw InvalidPack("题库里没有可用的题目")
+        val warnings = mutableListOf<String>()
+        val sheets = parseSheets(o.optJSONObject("sheets"), strict, baseUrl, warnings)
         return Parsed(
             QuestionPack(
                 id = id,
@@ -148,10 +160,51 @@ object PackFormat {
                 license = o.optString("license").trim(),
                 tags = o.optJSONArray("tags").strings(),
                 version = o.optInt("version", 1).coerceAtLeast(1),
-                questions = questions,
+                questions = stripBadSprites(questions, sheets, warnings),
+                sheets = sheets,
             ),
             skipped,
+            warnings,
         )
+    }
+
+    private fun parseSheets(o: JSONObject?, strict: Boolean, baseUrl: String?, warnings: MutableList<String>): Map<String, SpriteSheet> {
+        if (o == null) return emptyMap()
+        val out = LinkedHashMap<String, SpriteSheet>()
+        for (id in o.keys()) {
+            val sheet = o.optJSONObject(id)?.let(SpriteSheet::fromJson)
+            if (sheet == null) { warnings += "精灵图「$id」的写法不对：需要 url、cols、rows（1~${SpriteSheet.MAX_GRID}），bytes 不超过 ${SpriteSheet.MAX_BYTES / 1024}KB"; continue }
+            // 本地文件里的地址已经解析过，原样读取
+            val url = if (strict) resolveSheetUrl(sheet.url, baseUrl) else sheet.url
+            if (url == null) { warnings += "精灵图「$id」的地址不能用：需要 https 地址，相对路径只有分享题库支持"; continue }
+            out[id] = sheet.copy(url = url)
+        }
+        return out
+    }
+
+    /** 相对地址按 [base]（包文件地址）解析；只接受 https，包本身是 http 来源时才接受 http。 */
+    fun resolveSheetUrl(url: String, base: String?): String? {
+        val abs = runCatching { if (base != null) URL(URL(base), url) else URL(url) }.getOrNull() ?: return null
+        val ok = abs.protocol == "https" || (abs.protocol == "http" && base?.startsWith("http://") == true)
+        return abs.toString().takeIf { ok && abs.host.isNotEmpty() }
+    }
+
+    /** 精灵图引用不存在的图、格子越界或帧数不对的题：去掉 sprite，仍然用 display 出题。 */
+    fun stripBadSprites(questions: List<Question>, sheets: Map<String, SpriteSheet>, warnings: MutableList<String>? = null): List<Question> =
+        questions.map { q ->
+            val reason = spriteProblem(q.sprite ?: return@map q, sheets) ?: return@map q
+            warnings?.add("「${q.display}」（${q.id}）的 sprite $reason，已改为显示 display")
+            q.copy(sprite = null)
+        }
+
+    private fun spriteProblem(s: SpriteRef, sheets: Map<String, SpriteSheet>): String? {
+        val sheet = sheets[s.sheet] ?: return "引用的精灵图「${s.sheet}」不存在或不可用"
+        return when {
+            s.cell !in 0 until sheet.cells -> "cell=${s.cell} 超出范围（共 ${sheet.cells} 格）"
+            s.frames !in 1..SpriteRef.MAX_FRAMES -> "frames=${s.frames} 要在 1~${SpriteRef.MAX_FRAMES} 之间"
+            s.cell + s.frames > sheet.cells -> "cell=${s.cell}、frames=${s.frames} 超出范围（共 ${sheet.cells} 格）"
+            else -> null
+        }
     }
 
     private fun valid(q: Question): Boolean {
@@ -173,9 +226,14 @@ object PackRules {
     fun myPack(questions: List<Question> = emptyList(), now: Long = 0) =
         QuestionPack(MY_PACK_ID, "我的题目", "✏️", "自己添加的题目", questions = questions, installedAt = now)
 
-    /** 开着的包里启用的题，按内容去重。 */
+    /** 开着的包里启用的题，按内容去重；内容相同的题优先保留带精灵图的，精灵图信息从所属包带上。 */
     fun activeQuestions(packs: List<QuestionPack>): List<Question> =
-        packs.filter { it.enabled }.flatMap { p -> p.questions.filter { it.enabled } }.distinctBy { it.key }
+        packs.filter { it.enabled }.flatMap { p ->
+            p.questions.filter { it.enabled }.map { q ->
+                val ref = q.sprite
+                if (ref == null) q else q.copy(sprite = ref.copy(spec = p.sheets[ref.sheet]))
+            }
+        }.groupBy { it.key }.values.map { same -> same.firstOrNull { it.sprite?.spec != null } ?: same.first() }
 
     /**
      * 旧版本只有一个题库（questions.json）。拆分为内置包 + 「我的题目」：

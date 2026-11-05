@@ -105,7 +105,10 @@ class AdminServer(private val context: Context, private val store: Store) : Nano
             "POST packs/restore" -> { store.restoreBuiltins(); ok(JSONObject()) }
             "GET shared" -> ok(shared())
             "POST shared/install" -> ok(installShared(body(session).optString("id")))
-            "POST questions" -> body(session).let { b -> ok(store.upsertQuestion(requirePack(b.optString("packId")).id, question(b)).toJson()) }
+            "POST questions" -> body(session).let { b ->
+                val pack = requirePack(b.optString("packId"))
+                ok(store.upsertQuestion(pack.id, question(b, pack)).toJson())
+            }
             "DELETE questions" -> { store.deleteQuestion(param(session, "pack"), param(session, "id")); ok(JSONObject()) }
             "POST questions/enable" -> body(session).let { b ->
                 store.setQuestionEnabled(requirePack(b.optString("packId")).id, b.optString("id"), b.optBoolean("enabled"))
@@ -222,7 +225,7 @@ class AdminServer(private val context: Context, private val store: Store) : Nano
 
     // ---- 题库 ----
 
-    private fun question(o: JSONObject): Question {
+    private fun question(o: JSONObject, pack: QuestionPack): Question {
         val subject = subjectOf(o)
         val mode = enumOr(o.optString("mode"), AnswerMode.VOICE)
         val answers = o.optJSONArray("answers").strings().map { it.trim() }.filter { it.isNotEmpty() }
@@ -245,6 +248,8 @@ class AdminServer(private val context: Context, private val store: Store) : Nano
             choices = if (mode == AnswerMode.CHOICE) (listOf(answers.first()) + choices).distinct() else emptyList(),
             speak = o.optString("speak").trim(),
             enabled = o.optBoolean("enabled", true),
+            // 网页不能编辑精灵图，改题时沿用原来的，不然保存一次就丢了
+            sprite = o.optString("id").takeIf { it.isNotEmpty() }?.let { id -> pack.questions.firstOrNull { it.id == id }?.sprite },
         )
     }
 
@@ -361,7 +366,7 @@ class AdminServer(private val context: Context, private val store: Store) : Nano
 
     /** 安装题库文件；电视上显示不了的表情题跳过，并告诉家长跳过了几道。 */
     private fun installPack(o: JSONObject, source: PackSource, url: String = ""): JSONObject {
-        val parsed = PackFormat.parse(o)
+        val parsed = PackFormat.parse(o, baseUrl = url.ifBlank { null })
         val usable = parsed.pack.questions.filterNot { Emoji.unsupported(context, it.display) }
         if (usable.isEmpty()) throw HttpError(Response.Status.BAD_REQUEST, "题库里没有电视能显示的题目")
         val result = store.installPack(parsed.pack.copy(questions = usable), source, url)
@@ -370,6 +375,8 @@ class AdminServer(private val context: Context, private val store: Store) : Nano
             .put("updated", result == Store.InstallResult.UPDATED)
             .put("count", usable.size)
             .put("skipped", parsed.skipped + parsed.pack.questions.size - usable.size)
+            .put("sheets", parsed.pack.sheets.size)
+            .put("warnings", JSONArray(parsed.warnings))
     }
 
     private fun exportPack(p: QuestionPack): Response {
