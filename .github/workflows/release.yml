@@ -17,7 +17,7 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
       # 配置了签名密钥才用 release 签名；否则退回 debug 签名（能安装，但不能覆盖 release 签名的版本）
       - name: Prepare signing key
         env:
