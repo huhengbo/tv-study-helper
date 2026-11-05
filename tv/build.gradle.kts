@@ -55,11 +55,11 @@ android {
 }
 
 dependencies {
-    implementation("androidx.core:core-ktx:1.13.1")
-    implementation("androidx.dynamicanimation:dynamicanimation:1.0.0")
+    implementation("androidx.core:core-ktx:1.19.1")
+    implementation("androidx.dynamicanimation:dynamicanimation:1.1.0")
     implementation("org.nanohttpd:nanohttpd:2.3.1")
-    implementation("com.google.zxing:core:3.5.3")
+    implementation("com.google.zxing:core:3.5.4")
     implementation("com.belerweb:pinyin4j:2.5.1")
     testImplementation("junit:junit:4.13.2")
-    testImplementation("org.json:json:20240303")
+    testImplementation("org.json:json:20260814")
 }
