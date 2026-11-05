@@ -1,0 +1,60 @@
+package de.huyc.studyhelper.quiz
+
+import de.huyc.studyhelper.data.Subject.ENGLISH
+import de.huyc.studyhelper.data.Subject.HANZI
+import de.huyc.studyhelper.data.Subject.MATH
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class AnswerMatcherTest {
+
+    @Test fun hanziAcceptsSameCharWithPunctuationAndFiller() {
+        assertTrue(AnswerMatcher.isCorrect(HANZI, "山。", listOf("山")))
+        assertTrue(AnswerMatcher.isCorrect(HANZI, "是山", listOf("山")))
+    }
+
+    @Test fun hanziAcceptsHomophoneButNotOtherSound() {
+        assertTrue(AnswerMatcher.isCorrect(HANZI, "删", listOf("山")))
+        assertTrue(AnswerMatcher.isCorrect(HANZI, "衫", listOf("山")))
+        assertFalse(AnswerMatcher.isCorrect(HANZI, "水", listOf("山")))
+    }
+
+    @Test fun hanziMultiCharWord() {
+        assertTrue(AnswerMatcher.isCorrect(HANZI, "妈妈", listOf("妈妈")))
+        assertFalse(AnswerMatcher.isCorrect(HANZI, "爸爸", listOf("妈妈")))
+    }
+
+    @Test fun mathAcceptsDigitsAndChineseNumerals() {
+        assertTrue(AnswerMatcher.isCorrect(MATH, "12", listOf("12")))
+        assertTrue(AnswerMatcher.isCorrect(MATH, "十二。", listOf("12")))
+        assertTrue(AnswerMatcher.isCorrect(MATH, "等于二十", listOf("20")))
+        assertTrue(AnswerMatcher.isCorrect(MATH, "一百零五", listOf("105")))
+        assertFalse(AnswerMatcher.isCorrect(MATH, "十三", listOf("12")))
+        assertFalse(AnswerMatcher.isCorrect(MATH, "", listOf("12")))
+    }
+
+    @Test fun englishIgnoresCaseSpacesAndExtras() {
+        assertTrue(AnswerMatcher.isCorrect(ENGLISH, "Banana.", listOf("banana")))
+        assertTrue(AnswerMatcher.isCorrect(ENGLISH, "it is a banana", listOf("banana")))
+        assertTrue(AnswerMatcher.isCorrect(ENGLISH, "ice cream", listOf("ice cream")))
+        assertFalse(AnswerMatcher.isCorrect(ENGLISH, "apple", listOf("banana")))
+    }
+
+    @Test fun extractNumbers() {
+        assertEquals(listOf(7, 15), AnswerMatcher.extractNumbers("7和十五"))
+        assertEquals(listOf(2), AnswerMatcher.extractNumbers("两"))
+    }
+
+    @Test fun tonedPinyin() {
+        assertEquals("shān", AnswerMatcher.tonedPinyin('山'))
+        // pinyin4j 第三声输出的是短音符（ŭ），必须纠正为抑扬符（ǔ）
+        assertEquals("tǔ", AnswerMatcher.tonedPinyin('土'))
+        assertEquals("mǎ", AnswerMatcher.tonedPinyin('马'))
+        assertEquals("nǐ", AnswerMatcher.tonedPinyin('你'))
+        assertEquals("wǒ", AnswerMatcher.tonedPinyin('我'))
+        assertEquals("zǐ", AnswerMatcher.tonedPinyin('子'))
+    }
+}
+

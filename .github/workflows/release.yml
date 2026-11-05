@@ -1,0 +1,56 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check version
+        run: scripts/version.sh check "$GITHUB_REF_NAME"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+      # 配置了签名密钥才用 release 签名；否则退回 debug 签名（能安装，但不能覆盖 release 签名的版本）
+      - name: Prepare signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::warning::未配置 ANDROID_KEYSTORE_BASE64，APK 使用 debug 签名"
+            exit 0
+          fi
+          mkdir -p secrets/android
+          echo "$KEYSTORE_BASE64" | base64 -d > secrets/android/release.jks
+          {
+            echo "storeFile=release.jks"
+            echo "storePassword=$STORE_PASSWORD"
+            echo "keyAlias=$KEY_ALIAS"
+            echo "keyPassword=$KEY_PASSWORD"
+          } > secrets/android/key.properties
+      - run: ./gradlew --no-daemon :tv:testDebugUnitTest :tv:assembleRelease
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="$(cat VERSION)"
+          apk="tv-study-helper-$version.apk"
+          cp tv/build/outputs/apk/release/tv-release.apk "$apk"
+          sha256sum "$apk" > "$apk.sha256"
+          scripts/version.sh notes > release-notes.md
+          # 升级清单：电视通过 releases/latest/download/update.json 检查新版本
+          scripts/version.sh manifest "$apk" > update.json
+          gh release create "$GITHUB_REF_NAME" \
+            --title "学习小助手 $GITHUB_REF_NAME" \
+            --notes-file release-notes.md \
+            "$apk" "$apk.sha256" update.json

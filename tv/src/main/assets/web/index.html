@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#FFF3D9">
+  <title>学习小助手 · 家长管理</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="blobs" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+
+  <!-- 登录 -->
+  <section id="login" class="login hidden">
+    <div class="login-card pop">
+      <div class="mascot bob">🐼</div>
+      <h1>学习小助手</h1>
+      <p class="muted">输入家长密码，管理电视上的答题</p>
+      <input id="pin" type="password" inputmode="numeric" autocomplete="current-password" maxlength="8" placeholder="家长密码">
+      <button id="loginBtn" class="btn primary block">进入</button>
+      <p id="loginErr" class="err"></p>
+      <p id="loginAction" class="muted small hidden"></p>
+    </div>
+  </section>
+
+  <!-- 主界面 -->
+  <main id="app" class="hidden">
+    <header class="topbar">
+      <div class="brand"><span class="mini-mascot">🐼</span>学习小助手</div>
+      <span id="tvState" class="chip">连接中</span>
+    </header>
+
+    <!-- 概览 -->
+    <section class="page" data-page="home">
+      <div class="card update hidden" id="updateCard">
+        <h3 id="updateTitle"></h3>
+        <div class="update-notes muted small" id="updateNotes"></div>
+        <div class="update-bar hidden" id="updateBar"><i></i></div>
+        <p class="small" id="updateMsg"></p>
+        <button class="btn primary block" id="updateBtn">更新到电视</button>
+      </div>
+      <div class="card hero">
+        <div class="ring-wrap">
+          <svg viewBox="0 0 120 120" class="ring">
+            <circle cx="60" cy="60" r="50" class="track"/>
+            <circle cx="60" cy="60" r="50" class="bar" id="ringBar"/>
+          </svg>
+          <div class="ring-text"><b id="remain">--:--</b><span>还可以看</span></div>
+        </div>
+        <div class="hero-info">
+          <div id="heroTitle" class="hero-title">守护中</div>
+          <div id="heroSub" class="muted"></div>
+          <div id="fgApp" class="muted small"></div>
+        </div>
+      </div>
+
+      <div class="card notice hidden" id="noAppsHint">
+        <b>还没有选择要管控的 App</b>
+        <p class="muted small">现在设置为「只在选中的 App 里计时」，但一个都没选，所以不会计时。请到「应用」页勾选孩子常用的 App。</p>
+        <button class="btn" id="gotoApps">去选择</button>
+      </div>
+
+      <div class="grid-actions">
+        <button class="action" data-act="lock"><span>🔒</span>立即答题</button>
+        <button class="action" data-act="unlock"><span>🔓</span>直接解锁</button>
+        <button class="action" data-act="add10"><span>⏱️</span>加 10 分钟</button>
+        <button class="action" data-act="add30"><span>⏰</span>加 30 分钟</button>
+        <button class="action" data-act="pause" id="pauseBtn"><span>⏸️</span>暂停守护</button>
+        <button class="action" data-act="preview"><span>✏️</span>电视上试一试</button>
+      </div>
+
+      <div class="card">
+        <h3>电视权限</h3>
+        <ul id="perms" class="perm-list"></ul>
+        <p id="permHint" class="muted small hidden">有权限未开启？在电脑上连接电视后运行项目里的 <code>scripts/setup_tv.sh</code> 即可一次性开启。</p>
+      </div>
+
+      <div class="card">
+        <h3>最近作答</h3>
+        <ul id="logs" class="log-list"></ul>
+      </div>
+    </section>
+
+    <!-- 题库 -->
+    <section class="page hidden" data-page="bank">
+      <!-- 题库列表 -->
+      <div id="packsView">
+        <p class="muted small" id="packSummary"></p>
+        <ul id="packList" class="pack-list"></ul>
+        <div class="card notice hidden" id="noPackHint">
+          <b>没有打开任何题库</b>
+          <p class="muted small">答题时只会出自动生成的加减法。打开上面任意一个题库的开关即可。</p>
+        </div>
+        <button class="btn primary block" id="addPack">＋ 添加题库</button>
+        <p class="center"><button class="link-btn" id="restoreBuiltin">恢复内置题库</button></p>
+      </div>
+
+      <!-- 某个题库里的题 -->
+      <div id="packView" class="hidden">
+        <button class="link-btn back" id="backPacks">‹ 全部题库</button>
+        <div class="card pack-hero" id="packHero"></div>
+        <div class="seg" id="bankFilter">
+          <button data-v="ALL" class="on">全部</button>
+          <button data-v="MATH">数学</button>
+          <button data-v="ENGLISH">英语</button>
+          <button data-v="HANZI">认字</button>
+          <button data-v="PINYIN">拼音</button>
+        </div>
+        <div class="row gap">
+          <input id="bankSearch" class="grow" placeholder="搜索题目或答案">
+          <button class="btn" id="importBtn">批量导入</button>
+        </div>
+        <p id="bankCount" class="muted small"></p>
+        <ul id="bankList" class="q-list"></ul>
+        <button class="fab" id="addQ" aria-label="新建题目">＋</button>
+      </div>
+      <input type="file" id="packFile" accept=".json,application/json" class="hidden">
+    </section>
+
+    <!-- 应用 -->
+    <section class="page hidden" data-page="apps">
+      <div class="card">
+        <h3>什么时候计时？</h3>
+        <label class="radio"><input type="radio" name="countMode" value="SELECTED_APPS"><span>只在下面勾选的 App 里计时（推荐）</span></label>
+        <label class="radio"><input type="radio" name="countMode" value="ALL"><span>电视亮着就计时</span></label>
+      </div>
+      <div class="card">
+        <h3>需要管控的 App</h3>
+        <p class="muted small">勾选孩子看视频用的 App，比如少儿频道、视频播放器。</p>
+        <ul id="appList" class="app-list"></ul>
+      </div>
+    </section>
+
+    <!-- 语音 -->
+    <section class="page hidden" data-page="voice">
+      <div class="card">
+        <h3>🎙️ 语音识别（判断孩子的回答）</h3>
+        <div class="seg" id="asrProvider">
+          <button data-v="none">不使用</button>
+          <button data-v="baidu">百度智能云</button>
+          <button data-v="volc">火山引擎</button>
+        </div>
+        <button class="btn block" id="testAsr">测试连接</button>
+      </div>
+
+      <div class="card">
+        <h3>🔊 朗读题目（可选）</h3>
+        <label class="switch-row"><span>答题时朗读题目和鼓励语</span><input type="checkbox" id="ttsEnabled" class="switch"></label>
+        <div id="ttsBox">
+          <div class="seg" id="ttsProvider">
+            <button data-v="none">不使用</button>
+            <button data-v="baidu">百度智能云</button>
+            <button data-v="volc">火山引擎</button>
+          </div>
+          <label class="field"><span>音色</span>
+            <select id="ttsVoice"></select>
+          </label>
+          <label class="field" id="speedField"><span>语速 <b id="speedVal"></b></span>
+            <input type="range" id="ttsSpeed" min="0" max="15" step="1">
+          </label>
+          <div class="row gap">
+            <input id="ttsText" class="grow" value="小朋友你好，我们来答题吧">
+            <button class="btn" id="testTts">在电视上试听</button>
+          </div>
+          <p class="muted small" id="ttsCache"></p>
+        </div>
+      </div>
+
+      <div class="card" id="baiduKeys">
+        <h3>百度智能云密钥</h3>
+        <p class="muted small">在百度智能云「语音技术」创建应用后获得，识别和朗读共用。</p>
+        <label class="field"><span>API Key</span><input id="baiduApiKey" autocomplete="off"></label>
+        <label class="field"><span>Secret Key</span><input id="baiduSecretKey" type="password" autocomplete="off"></label>
+      </div>
+
+      <div class="card" id="volcKeys">
+        <h3>火山引擎（豆包语音）密钥</h3>
+        <p class="muted small">新版控制台只需填 API Key；旧版控制台填 App ID 和 Access Token。识别需开通「录音文件识别极速版」，朗读需开通「语音合成大模型」。</p>
+        <label class="field"><span>API Key（新版）</span><input id="volcApiKey" type="password" autocomplete="off"></label>
+        <label class="field"><span>App ID（旧版）</span><input id="volcAppId" autocomplete="off"></label>
+        <label class="field"><span>Access Token（旧版）</span><input id="volcAccessKey" type="password" autocomplete="off"></label>
+      </div>
+      <button class="btn primary block" id="saveVoice">保存语音设置</button>
+    </section>
+
+    <!-- 设置 -->
+    <section class="page hidden" data-page="settings">
+      <div class="card">
+        <h3>⏱️ 观看与答题</h3>
+        <div class="stepper-row"><span>每次可以看</span><div class="stepper" data-key="watchMinutes" data-step="5" data-min="5" data-max="240"><button>−</button><b></b><button>＋</button></div><span class="unit">分钟</span></div>
+        <div class="stepper-row"><span>需要答对</span><div class="stepper" data-key="questionCount" data-step="1" data-min="1" data-max="10"><button>−</button><b></b><button>＋</button></div><span class="unit">道题</span></div>
+        <div class="stepper-row"><span>提前提醒</span><div class="stepper" data-key="warnSeconds" data-step="30" data-min="0" data-max="300"><button>−</button><b></b><button>＋</button></div><span class="unit">秒</span></div>
+        <label class="switch-row"><span>答错一题，已答对的清零重来（答错都会公布答案并换题）</span><input type="checkbox" class="switch" data-key="wrongResets"></label>
+        <label class="switch-row"><span>答完后自动继续播放</span><input type="checkbox" class="switch" data-key="resumePlayback"></label>
+        <label class="switch-row"><span>开机自动开始守护</span><input type="checkbox" class="switch" data-key="autoStart"></label>
+      </div>
+
+      <div class="card">
+        <h3>📚 出哪些科目</h3>
+        <p class="muted small">各科目轮流出题。认字是看字读出来；拼音是看字选拼音。</p>
+        <div class="chips" id="subjects"></div>
+        <label class="switch-row"><span>拼音题：用认字题库里的字自动出「选拼音」</span><input type="checkbox" class="switch" data-key="pinyinAuto"></label>
+      </div>
+
+      <div class="card">
+        <h3>➕ 数学自动出题</h3>
+        <label class="switch-row"><span>自动生成加减法</span><input type="checkbox" class="switch" id="mathEnabled"></label>
+        <div class="chips">
+          <label><input type="checkbox" id="mathAdd"><span>加法</span></label>
+          <label><input type="checkbox" id="mathSub"><span>减法</span></label>
+        </div>
+        <label class="field"><span>作答方式</span>
+          <select id="mathMode">
+            <option value="VOICE">说出得数（语音）</option>
+            <option value="CHOICE">四个选项选一个</option>
+          </select>
+        </label>
+        <label class="field"><span>数字范围</span>
+          <select id="mathMax">
+            <option value="10">10 以内</option>
+            <option value="20">20 以内</option>
+            <option value="50">50 以内</option>
+            <option value="100">100 以内</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="card">
+        <h3>🎨 外观</h3>
+        <label class="field"><span>电视界面主题</span><select data-key="theme" id="themeSel"></select></label>
+      </div>
+
+      <div class="card">
+        <h3>🔑 家长密码</h3>
+        <p class="muted small">4~8 位数字。电视上 2 秒内连按 3 次菜单键会弹出解锁二维码，用手机扫码并输入此密码即可解锁。</p>
+        <div class="row gap">
+          <input id="newPin" class="grow" type="password" inputmode="numeric" maxlength="8" placeholder="新密码">
+          <button class="btn" id="savePin">修改</button>
+        </div>
+        <label class="switch-row"><span>允许在电视上直接输密码<br><small class="muted">在大屏上输入，孩子可能看到；仅建议手机不在身边时临时打开</small></span><input type="checkbox" class="switch" data-key="tvPinUnlock"></label>
+      </div>
+      <div class="card">
+        <h3>🌐 分享题库</h3>
+        <p class="muted small">一般不用填。想使用别的题库目录时，填它的 index.json 地址。</p>
+        <div class="row gap">
+          <input id="packIndexUrl" class="grow" inputmode="url" placeholder="使用默认地址">
+          <button class="btn" id="savePackIndex">保存</button>
+        </div>
+      </div>
+      <p class="muted small center"><span id="version"></span> · <button class="link-btn" id="checkUpdate">检查更新</button></p>
+    </section>
+
+    <nav class="tabbar">
+      <button data-tab="home" class="on"><span>🏠</span>概览</button>
+      <button data-tab="bank"><span>📚</span>题库</button>
+      <button data-tab="apps"><span>📺</span>应用</button>
+      <button data-tab="voice"><span>🎙️</span>语音</button>
+      <button data-tab="settings"><span>⚙️</span>设置</button>
+    </nav>
+  </main>
+
+  <!-- 编辑题目 -->
+  <div id="sheet" class="sheet hidden" role="dialog">
+    <div class="sheet-panel">
+      <div class="sheet-handle"></div>
+      <h3 id="sheetTitle">新建题目</h3>
+      <div id="sheetBody"></div>
+      <div class="row gap sheet-actions">
+        <button class="btn grow" id="sheetCancel">取消</button>
+        <button class="btn primary grow" id="sheetOk">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"></div>
+  <script src="app.js"></script>
+</body>
+</html>

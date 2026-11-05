@@ -1,0 +1,113 @@
+{
+ "format": "studyhelper-pack",
+ "formatVersion": 1,
+ "id": "builtin.math-fun",
+ "version": 1,
+ "name": "数一数比一比",
+ "icon": "🎲",
+ "description": "数数、比大小、找规律的选择题",
+ "author": "学习小助手",
+ "license": "CC-BY-SA-4.0",
+ "tags": [
+  "数学",
+  "幼小衔接"
+ ],
+ "questions": [
+  {
+   "id": "ch-2",
+   "subject": "MATH",
+   "mode": "CHOICE",
+   "prompt": "哪个数最大？",
+   "display": "比一比",
+   "answers": [
+    "9"
+   ],
+   "choices": [
+    "9",
+    "6",
+    "3",
+    "7"
+   ]
+  },
+  {
+   "id": "cmp-1",
+   "subject": "MATH",
+   "mode": "CHOICE",
+   "prompt": "哪个数最小？",
+   "display": "比一比",
+   "answers": [
+    "2"
+   ],
+   "choices": [
+    "2",
+    "8",
+    "5",
+    "4"
+   ]
+  },
+  {
+   "id": "cmp-2",
+   "subject": "MATH",
+   "mode": "CHOICE",
+   "prompt": "有几个苹果？",
+   "display": "🍎🍎🍎",
+   "answers": [
+    "3"
+   ],
+   "choices": [
+    "3",
+    "2",
+    "4",
+    "5"
+   ]
+  },
+  {
+   "id": "cmp-3",
+   "subject": "MATH",
+   "mode": "CHOICE",
+   "prompt": "有几只小鸭？",
+   "display": "🐤🐤🐤🐤🐤",
+   "answers": [
+    "5"
+   ],
+   "choices": [
+    "5",
+    "4",
+    "6",
+    "3"
+   ]
+  },
+  {
+   "id": "cmp-4",
+   "subject": "MATH",
+   "mode": "CHOICE",
+   "prompt": "5 后面是几？",
+   "display": "4  5  ?",
+   "answers": [
+    "6"
+   ],
+   "choices": [
+    "6",
+    "3",
+    "7",
+    "8"
+   ]
+  },
+  {
+   "id": "cmp-5",
+   "subject": "MATH",
+   "mode": "CHOICE",
+   "prompt": "哪个数比 6 大？",
+   "display": "比 6 大",
+   "answers": [
+    "8"
+   ],
+   "choices": [
+    "8",
+    "2",
+    "5",
+    "4"
+   ]
+  }
+ ]
+}

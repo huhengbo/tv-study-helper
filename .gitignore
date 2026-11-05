@@ -1,0 +1,13 @@
+.gradle/
+.kotlin/
+build/
+local.properties
+*.iml
+.idea/
+.DS_Store
+.claude/
+
+# 签名密钥不进版本库
+secrets/
+*.keystore
+*.jks
