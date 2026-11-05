@@ -14,6 +14,7 @@ import android.view.View
 import android.view.animation.AccelerateDecelerateInterpolator
 import android.view.animation.LinearInterpolator
 import android.widget.FrameLayout
+import android.widget.ImageView
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.min
@@ -46,6 +47,25 @@ class FloatingBackground(context: Context, theme: ThemeSpec) : FrameLayout(conte
             }
             animators += ObjectAnimator.ofFloat(blob, "translationX", -drift / 2, drift / 2).apply {
                 duration = 8000L + rnd.nextInt(5000); repeatCount = ValueAnimator.INFINITE
+                repeatMode = ValueAnimator.REVERSE; interpolator = AccelerateDecelerateInterpolator()
+            }
+        }
+        // 主题表情：只出现在四周，漂浮、轻轻摇摆
+        val edges = listOf(0.04f to 0.45f, 0.95f to 0.42f, 0.32f to 0.07f, 0.74f to 0.94f, 0.5f to 0.95f, 0.94f to 0.92f, 0.5f to 0.04f, 0.97f to 0.2f)
+        theme.decor.take(edges.size).forEachIndexed { i, code ->
+            val bmp = Emoji.bitmap(context, code) ?: return@forEachIndexed
+            val size = context.dp(64 + rnd.nextInt(40))
+            val sprite = ImageView(context).apply {
+                setImageBitmap(bmp); alpha = 0.7f; setLayerType(LAYER_TYPE_HARDWARE, null)
+            }
+            addView(sprite, LayoutParams(size, size))
+            sprite.tag = floatArrayOf(edges[i].first, edges[i].second)
+            animators += ObjectAnimator.ofFloat(sprite, "translationY", -context.dp(16f), context.dp(16f)).apply {
+                duration = 3500L + rnd.nextInt(2500); repeatCount = ValueAnimator.INFINITE
+                repeatMode = ValueAnimator.REVERSE; interpolator = AccelerateDecelerateInterpolator()
+            }
+            animators += ObjectAnimator.ofFloat(sprite, "rotation", -12f, 12f).apply {
+                duration = 2500L + rnd.nextInt(2000); repeatCount = ValueAnimator.INFINITE
                 repeatMode = ValueAnimator.REVERSE; interpolator = AccelerateDecelerateInterpolator()
             }
         }
