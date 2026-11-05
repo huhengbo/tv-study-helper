@@ -1,7 +1,6 @@
 package de.huyc.studyhelper.ui
 
 import android.animation.ObjectAnimator
-import android.animation.ValueAnimator
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Color
@@ -16,7 +15,6 @@ import android.view.Gravity
 import android.view.KeyEvent
 import android.view.View
 import android.view.animation.AccelerateInterpolator
-import android.view.animation.AccelerateDecelerateInterpolator
 import android.view.animation.OvershootInterpolator
 import android.widget.FrameLayout
 import android.widget.ImageView
@@ -90,7 +88,8 @@ class QuizView(
     @Volatile private var peakLevel = 0f
 
     // ---- 视图 ----
-    private val background = FloatingBackground(context, theme)
+    // 背景不动：浮层里持续动画会整屏每帧重画，电视上看着一闪一闪
+    private val background = FloatingBackground(context, theme, animated = false)
     private val mascot = ImageView(context)
     private val bubble = TextView(context)
     private val stars = LinearLayout(context)
@@ -107,10 +106,6 @@ class QuizView(
     private val badge = BadgeView(context)
     private val confetti = ConfettiView(context, listOf(theme.accent, theme.star, theme.success, Color.parseColor("#6FA8FF"), Color.parseColor("#C9B6FF")))
     private val footer = TextView(context)
-    private val mascotBob = ObjectAnimator.ofFloat(mascot, "translationY", -context.dp(6f), context.dp(6f)).apply {
-        duration = 1600; repeatCount = ValueAnimator.INFINITE; repeatMode = ValueAnimator.REVERSE
-        interpolator = AccelerateDecelerateInterpolator()
-    }
 
     init {
         isFocusable = true
@@ -123,6 +118,7 @@ class QuizView(
         speaker.warmUp(tts, Phrases.all(settings) + items.map { it.question.speakText })
         // 之前没下载成功的精灵图在这里重试；后台进行，这一轮没下好的题先显示 display
         SpriteCache.prefetch(context, store)
+        preloadSprites(items)
         asr?.let { worker.execute { runCatching { it.prepare() }.onFailure { e -> Log.w(TAG, "语音识别准备失败", e) } } }
     }
 
@@ -226,7 +222,6 @@ class QuizView(
     fun start() {
         alpha = 0f
         animate().alpha(1f).setDuration(350).start()
-        mascotBob.start()
         card.translationY = context.dp(120f)
         card.alpha = 0f
         card.animate().alpha(1f).setDuration(250).start()
@@ -242,7 +237,6 @@ class QuizView(
         recorder.stop()
         speaker.stop()
         sfx.release()
-        mascotBob.cancel()
         stopSprite()
         main.removeCallbacksAndMessages(null)
         worker.shutdownNow()
@@ -607,28 +601,51 @@ class QuizView(
 
     // ---- 小工具 ----
 
-    /** 题目有精灵图且图可用就显示精灵图（动画则循环播放），否则显示 display。图还没解码好时先显示 display，好了再换。 */
+    /** 本轮题目用到的精灵图提前解码，出题时就能直接显示；只取前几张，免得互相挤出缓存。 */
+    private fun preloadSprites(items: List<QuizItem>) {
+        items.mapNotNull { it.question.sprite }
+            .filter { ref -> ref.spec?.let { SpriteCache.has(context, it) } == true }
+            .distinctBy { it.spec?.cacheKey }
+            .take(PRELOAD_SHEETS)
+            .forEach { Sprites.load(context, it, context.dp(170)) {} }
+    }
+
+    /**
+     * 题目有精灵图且图可用就显示精灵图（动画则循环播放），否则显示 display。
+     * 图还没解码好时先空着等一会儿，不先显示备用表情，否则看起来像同一道题换了一张图；等太久才退回 display。
+     */
     private fun showQuestion(q: Question) {
         val ref = q.sprite
         val sheet = ref?.spec
         val ready = ref?.let(Sprites::cached)
+        stopSprite()
         if (ready != null) {
-            stopSprite()
             showSprite(ready)
             return
         }
-        showDisplay(q.display)
-        if (ref == null || sheet == null || !SpriteCache.has(context, sheet)) return
+        if (ref == null || sheet == null || !SpriteCache.has(context, sheet)) {
+            showDisplay(q.display)
+            return
+        }
+        display.visibility = INVISIBLE
+        displayImage.visibility = INVISIBLE
+        displayImage.setImageDrawable(null)
         val token = spriteToken
-        Sprites.load(context, ref, context.dp(170)) { if (!released && token == spriteToken) showSprite(it, replay = displayImage.visibility != VISIBLE) }
+        val fallback = Runnable { if (!released && token == spriteToken) showDisplay(q.display) }
+        main.postDelayed(fallback, SPRITE_WAIT_MS)
+        Sprites.load(context, ref, context.dp(170)) {
+            if (!released && token == spriteToken) {
+                main.removeCallbacks(fallback)
+                showSprite(it)
+            }
+        }
     }
 
-    /** [replay] 为 false 时是换掉已经显示着的备用表情，不重播弹出动画。 */
-    private fun showSprite(d: SpriteDrawable, replay: Boolean = true) {
+    private fun showSprite(d: SpriteDrawable) {
         display.visibility = INVISIBLE
         displayImage.visibility = VISIBLE
         displayImage.setImageDrawable(d)
-        if (replay) popIn()
+        popIn()
         d.start()
     }
 
@@ -709,6 +726,10 @@ class QuizView(
         /** 答对、答错音效的长度，朗读等音效播完再开口。 */
         private const val SFX_MS = 400L
         private const val DONE_SFX_MS = 900L
+        /** 精灵图解码最多等这么久，超时显示备用画面。 */
+        private const val SPRITE_WAIT_MS = 1500L
+        /** 开场预先解码的精灵图张数，一张约 5MB，不超过 [Sprites] 的缓存。 */
+        private const val PRELOAD_SHEETS = 4
         /** 通关号角响完后再放抽到贴纸的音效。 */
         private const val STICKER_SFX_DELAY_MS = 1100L
     }

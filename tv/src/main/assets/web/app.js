@@ -814,7 +814,7 @@ $('#importBtn').onclick = () => {
     MATH: ['每行一题：算式=答案', '3+4=7\n10-6=4\n2+2+3=7'],
     PINYIN: ['直接粘贴一段汉字，每个字生成一道「选出拼音」四选一（拼音自动生成）', '日月水火山石田禾'],
   };
-  const choiceHint = ['每行一题，用竖线分隔：题目|大字展示|正确答案|错误选项1|错误选项2…', '苹果的英语是哪一个？|🍎|apple|banana|orange\n哪个数最大？|比一比|9|6|3|7'];
+  const choiceHint = ['每行一题，用竖线分隔：题目|大字展示|正确答案|错误选项1|错误选项2…', '苹果的英语是哪一个？|🍎|apple|banana|orange\n哪个数最大？|9 6 3 7|9|6|3|7'];
   openSheet('批量导入', body, async () => {
     const r = await run(() => api('questions/import', { method: 'POST', body: { packId: state.pack.id, subject: segValue('impSubject'), mode: segValue('impSubject') === 'PINYIN' ? 'VOICE' : segValue('impMode'), text: $('#impText').value } }));
     if (!r) return false;

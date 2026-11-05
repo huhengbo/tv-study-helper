@@ -24,8 +24,9 @@ import kotlin.random.Random
 /**
  * 渐变背景 + 缓慢漂浮的柔和色块。每个色块是独立的硬件层 View，只做平移/缩放动画，
  * 由 GPU 合成，不触发整屏重绘——电视的 Mali-450 GPU 较弱，这样才能保持流畅。
+ * [animated] 为 false 时色块和表情静止不动：答题浮层里一直动会让整屏每帧重画，在电视 4A 上只有约 20 帧，看着一闪一闪。
  */
-class FloatingBackground(context: Context, theme: ThemeSpec) : FrameLayout(context) {
+class FloatingBackground(context: Context, theme: ThemeSpec, private val animated: Boolean = true) : FrameLayout(context) {
     private val animators = mutableListOf<Animator>()
 
     init {
@@ -36,7 +37,7 @@ class FloatingBackground(context: Context, theme: ThemeSpec) : FrameLayout(conte
             val size = context.dp(120 + rnd.nextInt(140))
             val blob = View(context).apply {
                 background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(theme.blobs[i % theme.blobs.size]) }
-                setLayerType(LAYER_TYPE_HARDWARE, null)
+                if (animated) setLayerType(LAYER_TYPE_HARDWARE, null)
             }
             addView(blob, LayoutParams(size, size))
             blob.tag = floatArrayOf(fx, fy)
@@ -56,7 +57,8 @@ class FloatingBackground(context: Context, theme: ThemeSpec) : FrameLayout(conte
             val bmp = Emoji.bitmap(context, code) ?: return@forEachIndexed
             val size = context.dp(64 + rnd.nextInt(40))
             val sprite = ImageView(context).apply {
-                setImageBitmap(bmp); alpha = 0.7f; setLayerType(LAYER_TYPE_HARDWARE, null)
+                setImageBitmap(bmp); alpha = 0.7f
+                if (animated) setLayerType(LAYER_TYPE_HARDWARE, null)
             }
             addView(sprite, LayoutParams(size, size))
             sprite.tag = floatArrayOf(edges[i].first, edges[i].second)
@@ -82,7 +84,7 @@ class FloatingBackground(context: Context, theme: ThemeSpec) : FrameLayout(conte
         }
     }
 
-    override fun onAttachedToWindow() { super.onAttachedToWindow(); animators.forEach { it.start() } }
+    override fun onAttachedToWindow() { super.onAttachedToWindow(); if (animated) animators.forEach { it.start() } }
     override fun onDetachedFromWindow() { animators.forEach { it.cancel() }; super.onDetachedFromWindow() }
 }
 

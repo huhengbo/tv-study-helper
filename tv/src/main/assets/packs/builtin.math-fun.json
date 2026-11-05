@@ -2,7 +2,7 @@
  "format": "studyhelper-pack",
  "formatVersion": 1,
  "id": "builtin.math-fun",
- "version": 1,
+ "version": 2,
  "name": "数一数比一比",
  "icon": "🎲",
  "description": "数数、比大小、找规律的选择题",
@@ -18,7 +18,7 @@
    "subject": "MATH",
    "mode": "CHOICE",
    "prompt": "哪个数最大？",
-   "display": "比一比",
+   "display": "9  6  3  7",
    "answers": [
     "9"
    ],
@@ -34,7 +34,7 @@
    "subject": "MATH",
    "mode": "CHOICE",
    "prompt": "哪个数最小？",
-   "display": "比一比",
+   "display": "2  8  5  4",
    "answers": [
     "2"
    ],
