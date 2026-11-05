@@ -23,7 +23,6 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import de.huyc.studyhelper.App
 import de.huyc.studyhelper.core.GuardService
-import de.huyc.studyhelper.core.Permissions
 import de.huyc.studyhelper.data.DailyStats
 import de.huyc.studyhelper.data.RewardRules
 import de.huyc.studyhelper.data.StickerCatalog
@@ -52,7 +51,7 @@ class MainActivity : Activity() {
     private lateinit var stampRow: LinearLayout
     private lateinit var stamps: LinearLayout
     private lateinit var lock: FrameLayout
-    private lateinit var lockAlert: View
+    private lateinit var hint: TextView
     private var wiggle: ObjectAnimator? = null
     private var ticks = 0
     private var entered = false
@@ -75,10 +74,9 @@ class MainActivity : Activity() {
         root.addView(PaperBackground(this, theme), FrameLayout.LayoutParams(-1, -1))
         root.addView(buildContent(), FrameLayout.LayoutParams(-1, -1))
         setContentView(root)
-        if (savedInstanceState == null && !app.store.setupPrompted && !Permissions.status(this).allGranted) {
-            app.store.setupPrompted = true
-            startActivity(Intent(this, SetupActivity::class.java))
-        }
+        // 升级前已经弹过授权页的老用户不再引导
+        if (app.store.setupPrompted) app.store.onboarded = true
+        if (savedInstanceState == null && !app.store.onboarded) startActivity(Intent(this, WelcomeActivity::class.java))
     }
 
     private fun buildContent(): View {
@@ -124,15 +122,21 @@ class MainActivity : Activity() {
         stampRow.addView(stamps)
         page.addView(stampRow, FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.START).apply { leftMargin = dp(46); bottomMargin = dp(28) })
 
-        // 右下：家长小锁，平时很淡，选中才清楚；缺权限时带个红点
+        // 右下：家长小锁，平时很淡，选中才清楚，不提示缺权限（那是大人的事，在家长页里看）
         lock = FrameLayout(this).apply { isFocusable = true; alpha = 0.55f }
         lock.addView(ImageView(this).apply { setImageBitmap(Emoji.bitmap(context, "1f512")) },
             FrameLayout.LayoutParams(dp(28), dp(28), Gravity.CENTER))
-        lockAlert = View(this).apply { background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(theme.error) } }
-        lock.addView(lockAlert, FrameLayout.LayoutParams(dp(12), dp(12), Gravity.TOP or Gravity.END).apply { topMargin = dp(6); rightMargin = dp(6) })
         val lockFocused = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Color.WHITE) }
         lock.setOnClickListener { startActivity(Intent(this, ParentActivity::class.java)) }
         page.addView(lock, FrameLayout.LayoutParams(dp(54), dp(54), Gravity.BOTTOM or Gravity.END).apply { rightMargin = dp(42); bottomMargin = dp(24) })
+
+        // 第一次进首页时的操作提示，孩子挪动一下或几秒后淡出
+        hint = themedText("", 22f, NOTE_INK, bold = true).apply {
+            setEmojiText("用左右方向键选一选，按「确定」进去")
+            background = pill(context, withAlpha(Color.WHITE, 0.9f))
+            setPadding(dp(22), dp(8), dp(22), dp(8)); alpha = 0f
+        }
+        page.addView(hint, FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply { bottomMargin = dp(34) })
 
         // 遥控器焦点路径写死：入口之间左右切换，往下到小锁，小锁往上回「学习」
         val tiles = listOf(studyTile, stickerTile)
@@ -168,6 +172,7 @@ class MainActivity : Activity() {
     /** 选中后停一会儿没再挪动，就把这个入口念出来；吉祥物也歪头看过去。 */
     private fun onFocused() {
         handler.removeCallbacks(speakLater)
+        if (userMoved && hint.alpha > 0f) hideHint()
         if (userMoved) handler.postDelayed(speakLater, 450)
         userMoved = true
         peek.animate().translationY(-dp(10f)).setDuration(120).withEndAction {
@@ -198,7 +203,16 @@ class MainActivity : Activity() {
         val target = lastFocused ?: studyTile
         // 第一次进入等贴纸贴好以后再聚焦，否则选中动画会被入场动画盖掉
         root.postDelayed({ target.requestFocus() }, if (firstTime) ENTRANCE_MS else 0)
+        if (app.store.onboarded && !app.store.homeHinted) showHint(if (firstTime) ENTRANCE_MS else 0)
     }
+
+    private fun showHint(after: Long) {
+        app.store.homeHinted = true
+        hint.animate().alpha(1f).setStartDelay(after + 400).setDuration(300).start()
+        handler.postDelayed({ hideHint() }, after + 8000)
+    }
+
+    private fun hideHint() { hint.animate().alpha(0f).setStartDelay(0).setDuration(300).start() }
 
     override fun onPause() {
         lastFocused = currentFocus
@@ -222,7 +236,6 @@ class MainActivity : Activity() {
             updateNote(left, low)
         }
         if (low && !store.paused && ticks % 4 == 0) shakeNote()
-        lockAlert.visibility = if (Permissions.status(this).allGranted) View.GONE else View.VISIBLE
         // 统计和贴纸要读文件，不必每秒都读
         if (ticks++ % 5 != 0) return
         refreshStudy()

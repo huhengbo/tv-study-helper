@@ -53,6 +53,10 @@
             android:exported="false" />
 
         <activity
+            android:name=".ui.WelcomeActivity"
+            android:exported="false" />
+
+        <activity
             android:name=".ui.SetupActivity"
             android:exported="false" />
 

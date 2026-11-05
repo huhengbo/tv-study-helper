@@ -27,7 +27,7 @@ import de.huyc.studyhelper.web.Net
 
 /**
  * 家长面板：从首页右上角的「家长」进入。守护状态和规则、手机扫码、试一试答题、
- * 暂停守护（需家长验证）、语音诊断、开启权限都在这里，孩子的首页只留学习入口。
+ * 暂停守护（需家长验证）、语音诊断、开启限时守护都在这里，孩子的首页只留学习入口。
  */
 class ParentActivity : Activity() {
     private val app get() = App.instance
@@ -96,8 +96,9 @@ class ParentActivity : Activity() {
         buttons.addView(pauseButton)
         buttons.addView(button("✏️  试一试答题") { app.lock.showQuiz(QuizMode.PREVIEW) })
         buttons.addView(button("🎤  语音诊断") { startActivity(Intent(this, VoiceDiagActivity::class.java)) })
+        buttons.addView(button("📖  使用引导") { startActivity(Intent(this, WelcomeActivity::class.java)) })
         // 权限齐全时隐藏
-        setupButton = button("🔧  开启权限") { startActivity(Intent(this, SetupActivity::class.java)) }
+        setupButton = button("🔧  开启限时守护") { startActivity(Intent(this, SetupActivity::class.java)) }
         buttons.addView(setupButton)
         left.addView(buttons, LinearLayout.LayoutParams(-2, -2).apply { leftMargin = -dp(8) })
         perms = text("", 13f, theme.inkSoft)
@@ -159,7 +160,7 @@ class ParentActivity : Activity() {
         val p = Permissions.status(this)
         setupButton.visibility = if (p.allGranted) View.GONE else View.VISIBLE
         perms.setEmojiText(if (p.allGranted) "v${BuildConfig.VERSION_NAME}" else
-            "权限：悬浮窗 ${mark(p.overlay)}   录音 ${mark(p.record)}   " +
+            "限时守护需要的权限（只学习可以不开）：悬浮窗 ${mark(p.overlay)}   录音 ${mark(p.record)}   " +
             "无障碍 ${mark(p.accessibility)}   使用情况 ${mark(p.usage)}   v${BuildConfig.VERSION_NAME}")
     }
 

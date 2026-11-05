@@ -41,21 +41,33 @@ fun darken(color: Int, f: Float): Int = Color.rgb(
     (Color.red(color) * (1 - f)).toInt(), (Color.green(color) * (1 - f)).toInt(), (Color.blue(color) * (1 - f)).toInt(),
 )
 
-/** 手账纸：主题底色向奶油色混合，加一层浅色点阵。静态，不重绘。 */
+/**
+ * 手账纸：主题底色向奶油色混合，加一层浅色点阵。点阵只在尺寸确定时画进一张位图，之后每帧只贴这一张图——
+ * 电视的 GPU 很弱，逐帧重画几百个圆会把首页拖到约 10 帧。
+ */
 class PaperBackground(context: Context, theme: ThemeSpec) : View(context) {
     private val paper = blend(theme.bgTop, CREAM, 0.85f)
     private val dot = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = darken(paper, 0.09f) }
     private val gap = context.dp(26f)
     private val r = context.dp(1.6f)
+    private var pattern: Bitmap? = null
+
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+        pattern?.recycle()
+        pattern = if (w <= 0 || h <= 0) null else Bitmap.createBitmap(w, h, Bitmap.Config.RGB_565).also { bmp ->
+            val c = Canvas(bmp)
+            c.drawColor(paper)
+            var y = gap / 2
+            while (y < h) {
+                var x = gap / 2
+                while (x < w) { c.drawCircle(x, y, r, dot); x += gap }
+                y += gap
+            }
+        }
+    }
 
     override fun onDraw(canvas: Canvas) {
-        canvas.drawColor(paper)
-        var y = gap / 2
-        while (y < height) {
-            var x = gap / 2
-            while (x < width) { canvas.drawCircle(x, y, r, dot); x += gap }
-            y += gap
-        }
+        pattern?.let { canvas.drawBitmap(it, 0f, 0f, null) } ?: canvas.drawColor(paper)
     }
 
     private companion object {

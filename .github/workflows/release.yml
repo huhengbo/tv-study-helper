@@ -11,6 +11,8 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
       - name: Check version
         run: scripts/version.sh check "$GITHUB_REF_NAME"
       - uses: actions/setup-java@v4

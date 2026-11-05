@@ -79,6 +79,16 @@ class Store(context: Context) {
                 i >= 0 && list[i].source == PackSource.BUILTIN && list[i].version < b.version -> list[i] = b.upgradedFrom(list[i]).also(::writePack)
             }
         }
+        // 随程序预置的公共题库：第一次装上（默认不启用），之后只在预置的版本更高时升级；家长删掉的不再装回
+        val removedShared = prefs.getStringSet(KEY_REMOVED_BUNDLED, emptySet()).orEmpty()
+        for (b in runCatching { BundledShared.load(app) }.onFailure { Log.e(TAG, "预置公共题库读取失败", it) }.getOrDefault(emptyList())) {
+            val i = list.indexOfFirst { it.id == b.id }
+            when {
+                i < 0 && b.id !in removedShared -> list += b.copy(enabled = false, installedAt = now).also(::writePack)
+                i >= 0 && list[i].source == PackSource.SHARED && list[i].version < b.version -> list[i] = b.upgradedFrom(list[i]).also(::writePack)
+            }
+        }
+        BundledShared.seedSprites(app, list)
         return list
     }
 
@@ -103,6 +113,9 @@ class Store(context: Context) {
         File(packDir, "$id.json").delete()
         if (p.source == PackSource.BUILTIN) {
             prefs.edit().putStringSet(KEY_REMOVED_BUILTINS, prefs.getStringSet(KEY_REMOVED_BUILTINS, emptySet()).orEmpty() + id).apply()
+        }
+        if (p.source == PackSource.SHARED) {
+            prefs.edit().putStringSet(KEY_REMOVED_BUNDLED, prefs.getStringSet(KEY_REMOVED_BUNDLED, emptySet()).orEmpty() + id).apply()
         }
         setPacks(packs.filterNot { it.id == id })
         if (p.sheets.isNotEmpty()) SpriteCache.prune(app, this)
@@ -204,6 +217,16 @@ class Store(context: Context) {
         get() = prefs.getBoolean("setupPrompted", false)
         set(v) = prefs.edit().putBoolean("setupPrompted", v).apply()
 
+    /** 家长已走完（或跳过）首次使用引导。 */
+    var onboarded: Boolean
+        get() = prefs.getBoolean("onboarded", false)
+        set(v) = prefs.edit().putBoolean("onboarded", v).apply()
+
+    /** 孩子的首页已经出过一次操作提示（方向键选、确定进入）。 */
+    var homeHinted: Boolean
+        get() = prefs.getBoolean("homeHinted", false)
+        set(v) = prefs.edit().putBoolean("homeHinted", v).apply()
+
     /** 家长从手机额外加的时长（秒），解锁或下一轮开始时清零。 */
     var bonusSeconds: Int
         get() = prefs.getInt("bonus", 0)
@@ -289,6 +312,7 @@ class Store(context: Context) {
     companion object {
         private const val MAX_LOGS = 1000
         private const val KEY_REMOVED_BUILTINS = "removedBuiltins"
+        private const val KEY_REMOVED_BUNDLED = "removedBundled"
         private const val TAG = "Store"
     }
 }

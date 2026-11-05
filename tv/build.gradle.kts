@@ -13,6 +13,20 @@ val appVersionCode = appVersion.split(".").map(String::toInt).let { (x, y, z) ->
 val signingFile = rootProject.file("secrets/android/key.properties")
 val signingProps = signingFile.takeIf { it.exists() }?.let { f -> Properties().apply { f.inputStream().use(::load) } }
 
+// 公共题库（git submodule packs-repo）随 APK 预置：题库 JSON 和精灵图拷到 assets/shared，首次启动装好（默认不启用）
+val sharedPacksDir = rootProject.file("packs-repo")
+val sharedAssetsOut = layout.buildDirectory.dir("generated/shared-assets")
+val bundleSharedPacks by tasks.registering(Sync::class) {
+    inputs.property("present", sharedPacksDir.resolve("index.json").exists())
+    from(sharedPacksDir.resolve("packs")) { into("shared/packs"); include("*.json") }
+    from(sharedPacksDir.resolve("sheets")) { into("shared/sheets") }
+    into(sharedAssetsOut)
+    doFirst {
+        if (!sharedPacksDir.resolve("index.json").exists())
+            throw GradleException("缺少公共题库子模块 packs-repo，请先执行：git submodule update --init")
+    }
+}
+
 android {
     namespace = "de.huyc.studyhelper"
     compileSdk = 35
@@ -51,8 +65,11 @@ android {
     }
     kotlinOptions { jvmTarget = "17" }
     buildFeatures { buildConfig = true }
+    sourceSets.getByName("main").assets.srcDir(sharedAssetsOut)
     lint { disable += listOf("ExpiredTargetSdkVersion", "OldTargetApi") }
 }
+
+tasks.matching { it.name == "preBuild" }.configureEach { dependsOn(bundleSharedPacks) }
 
 dependencies {
     implementation("androidx.core:core-ktx:1.13.1")
