@@ -192,7 +192,7 @@ function renderUpdate(u) {
   if (!show) return;
   if (u.latest) {
     $('#updateTitle').innerHTML = emo(`🎉 有新版本 v${esc(u.latest.version)}`);
-    $('#updateNotes').innerHTML = notesHtml(u.latest.notes) +
+    $('#updateNotes').innerHTML = emo(notesHtml(u.latest.notes)) +
       `<div class="muted">当前 v${esc(u.current)} · 安装包 ${(u.latest.size / 1048576).toFixed(1)} MB</div>`;
   }
   renderUpdateStatus(st);
