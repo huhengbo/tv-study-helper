@@ -152,6 +152,37 @@ async function refreshLogs() {
     : '<li class="muted small">还没有作答记录</li>';
 }
 
+const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
+
+async function refreshReport() {
+  const r = await api('report?days=7');
+  const answered = r.days.reduce((n, d) => n + d.answered, 0);
+  const correct = r.days.reduce((n, d) => n + d.correct, 0);
+  $('#reportSummary').innerHTML = emo(answered
+    ? `最近 7 天学习了 <b>${r.activeDays}</b> 天，答了 <b>${answered}</b> 道题，正确率 <b>${Math.round(correct * 100 / answered)}%</b> · 🌟 贴纸 ${r.stickers}/${r.stickerTotal}`
+    : `最近 7 天还没有答题记录 · 🌟 贴纸 ${r.stickers}/${r.stickerTotal}`);
+  const max = Math.max(1, ...r.days.map(d => d.answered));
+  $('#weekBars').innerHTML = r.days.map(d => {
+    const date = new Date(d.date + 'T00:00:00');
+    const h = Math.round(d.answered * 100 / max);
+    const right = d.answered ? Math.round(d.correct * 100 / d.answered) : 0;
+    return `<div class="day" title="${d.date}：答对 ${d.correct}/${d.answered}，通过 ${d.rounds} 轮">
+      <b>${d.answered || ''}</b>
+      <div class="bar ${d.answered ? '' : 'empty'}" style="height:${d.answered ? Math.max(8, Math.round(h * 0.7)) : 4}%"><i style="height:${right}%"></i></div>
+      周${WEEKDAYS[date.getDay()]}</div>`;
+  }).join('');
+  $('#subjectBars').innerHTML = r.bySubject.map(s => {
+    const pct = s.answered ? Math.round(s.correct * 100 / s.answered) : 0;
+    return `<div class="subject-row"><span class="name">${esc(SUBJECTS[s.subject] || s.subject)}</span>
+      <span class="track"><i style="width:${pct}%"></i></span><span class="pct">${pct}% · ${s.answered} 题</span></div>`;
+  }).join('');
+  $('#weakList').innerHTML = r.weak.length ? r.weak.map(w => `
+    <li><span class="log-q">${emo(esc(w.display))}</span>
+      <span class="log-heard muted">${esc(SUBJECTS[w.subject] || '')}</span>
+      <span class="bad-mark">答错 ${w.wrong}/${w.total} 次</span></li>`).join('')
+    : '<li class="muted small">暂时没有需要多练的题 👍</li>';
+}
+
 $$('.action').forEach(b => b.onclick = () => {
   const act = b.dataset.act;
   const map = {
@@ -825,10 +856,11 @@ async function start() {
   renderSettings();
   refreshStatus().catch(() => {});
   refreshLogs().catch(() => {});
+  refreshReport().catch(() => {});
   runPendingAction();
   checkUpdate().then(u => { if (['DOWNLOADING', 'VERIFYING'].includes(u.status.phase)) pollUpdate(); }).catch(() => {});
   setInterval(() => { if (!document.hidden && state.token) refreshStatus().catch(() => {}); }, 3000);
-  setInterval(() => { if (!document.hidden && state.token) refreshLogs().catch(() => {}); }, 15000);
+  setInterval(() => { if (!document.hidden && state.token) { refreshLogs().catch(() => {}); refreshReport().catch(() => {}); } }, 15000);
 }
 
 loadEmoji().finally(() => { if (state.token) start(); else showLogin(); });

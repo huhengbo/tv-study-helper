@@ -17,6 +17,7 @@ import de.huyc.studyhelper.data.PackRules
 import de.huyc.studyhelper.data.PackSource
 import de.huyc.studyhelper.data.Question
 import de.huyc.studyhelper.data.QuestionPack
+import de.huyc.studyhelper.data.ReportBuilder
 import de.huyc.studyhelper.data.AnswerMode
 import de.huyc.studyhelper.data.SpeechLanguage
 import de.huyc.studyhelper.data.Subject
@@ -111,6 +112,10 @@ class AdminServer(private val context: Context, private val store: Store) : Nano
                 ok(JSONObject())
             }
             "POST questions/import" -> ok(JSONObject().put("added", import(body(session))))
+            "GET report" -> ok(ReportBuilder.build(
+                store.daily(), store.logs(), store.rewards(), System.currentTimeMillis(),
+                session.parameters["days"]?.firstOrNull()?.toIntOrNull()?.coerceIn(1, 30) ?: 7,
+            ).toJson())
             "GET logs" -> ok(JSONObject().put("logs", JSONArray(store.logs().map { it.toJson() })))
             "POST lock" -> { app.lock.lock(); ok(JSONObject()) }
             "POST unlock" -> { app.lock.unlock(); ok(JSONObject()) }
