@@ -1,0 +1,568 @@
+package de.huyc.studyhelper.ui
+
+import android.animation.ObjectAnimator
+import android.animation.ValueAnimator
+import android.annotation.SuppressLint
+import android.content.Context
+import android.graphics.Color
+import android.os.Handler
+import android.os.Looper
+import android.text.TextUtils
+import android.util.TypedValue
+import android.view.Gravity
+import android.view.KeyEvent
+import android.view.View
+import android.view.animation.AccelerateInterpolator
+import android.view.animation.AccelerateDecelerateInterpolator
+import android.view.animation.OvershootInterpolator
+import android.widget.FrameLayout
+import android.widget.ImageView
+import android.widget.LinearLayout
+import android.widget.TextView
+import androidx.dynamicanimation.animation.DynamicAnimation
+import androidx.dynamicanimation.animation.SpringAnimation
+import androidx.dynamicanimation.animation.SpringForce
+import de.huyc.studyhelper.data.AnswerLog
+import de.huyc.studyhelper.data.AnswerMode
+import de.huyc.studyhelper.data.Subject
+import de.huyc.studyhelper.data.Store
+import de.huyc.studyhelper.quiz.AnswerMatcher
+import de.huyc.studyhelper.quiz.QuizItem
+import de.huyc.studyhelper.quiz.QuizSession
+import de.huyc.studyhelper.voice.AsrProvider
+import de.huyc.studyhelper.voice.Phrases
+import de.huyc.studyhelper.voice.Speaker
+import de.huyc.studyhelper.voice.VoiceKey
+import de.huyc.studyhelper.voice.VoiceProviders
+import de.huyc.studyhelper.voice.VoiceRecorder
+import java.util.concurrent.Executors
+
+/**
+ * 答题界面：顶部是小动物和星星进度，中间是题卡，下方是语音按钮或拼音选项。
+ * 按住语音键录音，松开后识别并判分；菜单键打开家长 PIN 解锁。
+ * [onFinish] 参数为 true 表示答题通过或家长解锁。
+ */
+@SuppressLint("ViewConstructor")
+class QuizView(
+    context: Context,
+    private val store: Store,
+    private val speaker: Speaker,
+    items: List<QuizItem>,
+    /** 家长「试一试」：按返回键可直接退出。 */
+    private val preview: Boolean,
+    private val onFinish: (passed: Boolean) -> Unit,
+) : FrameLayout(context) {
+
+    private enum class Phase { INTRO, READY, LISTENING, THINKING, CORRECT, WRONG, DONE }
+
+    private val settings = store.settings
+    private val theme = Themes.get(settings.theme)
+    private val session = QuizSession(items, settings.questionCount, settings.wrongResets)
+    private val asr: AsrProvider? = VoiceProviders.asr(context, settings.voice)
+    private val tts = if (settings.voice.ttsEnabled) VoiceProviders.tts(context, settings.voice) else null
+    private val recorder = VoiceRecorder(context)
+    private val worker = Executors.newSingleThreadExecutor()
+    private val main = Handler(Looper.getMainLooper())
+    private var phase = Phase.INTRO
+    private var released = false
+    private var gate: ParentGate? = null
+    private val menuPresses = mutableListOf<Long>()
+    private var choiceViews: List<TextView> = emptyList()
+
+    // ---- 视图 ----
+    private val background = FloatingBackground(context, theme)
+    private val mascot = ImageView(context)
+    private val bubble = TextView(context)
+    private val stars = LinearLayout(context)
+    private val card = LinearLayout(context)
+    private val prompt = TextView(context)
+    private val display = TextView(context)
+    private val displayImage = ImageView(context)
+    private val answerZone = FrameLayout(context)
+    private val voiceRow = LinearLayout(context)
+    private val mic = MicView(context, theme)
+    private val status = TextView(context)
+    private val dots = DotsView(context, theme.accent)
+    private val choiceRow = android.widget.GridLayout(context)
+    private val badge = BadgeView(context)
+    private val confetti = ConfettiView(context, listOf(theme.accent, theme.star, theme.success, Color.parseColor("#6FA8FF"), Color.parseColor("#C9B6FF")))
+    private val footer = TextView(context)
+    private val mascotBob = ObjectAnimator.ofFloat(mascot, "translationY", -context.dp(6f), context.dp(6f)).apply {
+        duration = 1600; repeatCount = ValueAnimator.INFINITE; repeatMode = ValueAnimator.REVERSE
+        interpolator = AccelerateDecelerateInterpolator()
+    }
+
+    init {
+        isFocusable = true
+        isFocusableInTouchMode = true
+        descendantFocusability = FOCUS_AFTER_DESCENDANTS
+        addView(background, LayoutParams(-1, -1))
+        addView(buildContent(), LayoutParams(-1, -1))
+        addView(confetti, LayoutParams(-1, -1))
+        // 本轮的题（含随机生成的数学题）和固定用语，提前合成
+        speaker.warmUp(tts, Phrases.all(settings) + items.map { it.question.speakText })
+    }
+
+    private fun buildContent(): View {
+        val root = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            clipChildren = false
+            clipToPadding = false
+            setPadding(context.dp(48), context.dp(28), context.dp(48), context.dp(20))
+        }
+
+        // 顶部：小动物 + 对话气泡 + 星星
+        val header = LinearLayout(context).apply { gravity = Gravity.CENTER_VERTICAL; clipChildren = false; clipToPadding = false }
+        mascot.setImageBitmap(Emoji.bitmap(context, theme.mascots.random()))
+        mascot.setPadding(context.dp(12), context.dp(12), context.dp(12), context.dp(12))
+        mascot.background = pill(context, theme.card)
+        mascot.elevation = context.dp(4f)
+        header.addView(mascot, LinearLayout.LayoutParams(context.dp(76), context.dp(76)))
+        bubble.text = Phrases.greeting(session.required)
+        bubble.setTextColor(theme.ink)
+        bubble.typeface = BOLD
+        bubble.setTextSize(TypedValue.COMPLEX_UNIT_SP, 20f)
+        bubble.background = pill(context, withAlpha(theme.card, 0.85f))
+        bubble.setPadding(context.dp(22), context.dp(12), context.dp(22), context.dp(12))
+        header.addView(bubble, LinearLayout.LayoutParams(-2, -2).apply { leftMargin = context.dp(14) })
+        header.addView(View(context), LinearLayout.LayoutParams(0, 1, 1f))
+        stars.gravity = Gravity.CENTER_VERTICAL
+        stars.background = pill(context, withAlpha(theme.card, 0.85f))
+        stars.setPadding(context.dp(10), context.dp(8), context.dp(16), context.dp(8))
+        repeat(session.required) {
+            stars.addView(StarView(context, theme), LinearLayout.LayoutParams(context.dp(44), context.dp(44)).apply { leftMargin = context.dp(6) })
+        }
+        header.addView(stars)
+        root.addView(header)
+
+        // 中间题卡
+        val cardHolder = FrameLayout(context)
+        card.orientation = LinearLayout.VERTICAL
+        card.gravity = Gravity.CENTER_HORIZONTAL
+        card.background = cardBackground(context, theme.card)
+        card.elevation = context.dp(10f)
+        card.setPadding(context.dp(36), context.dp(22), context.dp(36), context.dp(22))
+        prompt.setTextColor(theme.inkSoft)
+        prompt.typeface = BOLD
+        prompt.setTextSize(TypedValue.COMPLEX_UNIT_SP, 24f)
+        prompt.gravity = Gravity.CENTER
+        card.addView(prompt, LinearLayout.LayoutParams(-1, -2))
+        display.setTextColor(theme.ink)
+        display.typeface = BOLD
+        display.gravity = Gravity.CENTER
+        display.includeFontPadding = false
+        display.maxLines = 1
+        display.ellipsize = TextUtils.TruncateAt.END
+        val displayBox = FrameLayout(context)
+        displayBox.addView(display, LayoutParams(-1, -1))
+        displayBox.addView(displayImage, LayoutParams(context.dp(170), context.dp(170), Gravity.CENTER))
+        card.addView(displayBox, LinearLayout.LayoutParams(-1, 0, 1f))
+
+        // 作答区：语音（麦克风+提示）或拼音选项，二者互斥
+        voiceRow.gravity = Gravity.CENTER
+        voiceRow.addView(mic, LinearLayout.LayoutParams(context.dp(120), context.dp(120)))
+        val statusBox = FrameLayout(context)
+        status.setTextColor(theme.ink)
+        status.setTextSize(TypedValue.COMPLEX_UNIT_SP, 20f)
+        status.typeface = BOLD
+        statusBox.addView(status, LayoutParams(-2, -2, Gravity.CENTER_VERTICAL))
+        statusBox.addView(dots, LayoutParams(context.dp(54), context.dp(24), Gravity.CENTER_VERTICAL or Gravity.END))
+        dots.visibility = GONE
+        voiceRow.addView(statusBox, LinearLayout.LayoutParams(context.dp(420), -2).apply { leftMargin = context.dp(4) })
+        answerZone.addView(voiceRow, LayoutParams(-1, -2, Gravity.CENTER))
+        // 选项获得焦点会放大，不能被题卡裁掉
+        for (v in listOf(choiceRow, answerZone, card)) { v.clipChildren = false; v.clipToPadding = false }
+        answerZone.addView(choiceRow, LayoutParams(-2, -2, Gravity.CENTER))
+        answerZone.minimumHeight = context.dp(120)
+        card.addView(answerZone, LinearLayout.LayoutParams(-1, -2))
+
+        cardHolder.addView(card, LayoutParams(context.dp(660), -1, Gravity.CENTER))
+        badge.elevation = context.dp(14f)
+        badge.visibility = INVISIBLE
+        // 徽章挂在题卡右上角，不遮挡题目
+        badge.translationX = context.dp(300f)
+        cardHolder.clipChildren = false
+        cardHolder.addView(badge, LayoutParams(context.dp(84), context.dp(84), Gravity.CENTER_HORIZONTAL or Gravity.TOP))
+        root.addView(cardHolder, LinearLayout.LayoutParams(-1, 0, 1f).apply { topMargin = context.dp(18); bottomMargin = context.dp(10) })
+
+        // 正式锁定时不提示家长入口（长按菜单键），避免孩子发现
+        footer.text = if (preview) "试一试模式：按返回键退出" else ""
+        footer.setTextColor(withAlpha(theme.inkSoft, 0.7f))
+        footer.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+        footer.gravity = Gravity.END
+        root.addView(footer, LinearLayout.LayoutParams(-1, -2))
+        return root
+    }
+
+    // ---- 流程 ----
+
+    fun start() {
+        alpha = 0f
+        animate().alpha(1f).setDuration(350).start()
+        mascotBob.start()
+        card.translationY = context.dp(120f)
+        card.alpha = 0f
+        card.animate().alpha(1f).setDuration(250).start()
+        spring(card, DynamicAnimation.TRANSLATION_Y, 0f, SpringForce.STIFFNESS_LOW, 0.62f)
+        bind(session.current)
+        // 先说开场白，再读第一题
+        main.postDelayed({ if (!released) speaker.speak(tts, Phrases.greeting(session.required)) { readQuestion() } }, 450)
+    }
+
+    fun release() {
+        released = true
+        recorder.stop()
+        speaker.stop()
+        mascotBob.cancel()
+        main.removeCallbacksAndMessages(null)
+        worker.shutdownNow()
+    }
+
+    private fun bind(item: QuizItem) {
+        val q = item.question
+        prompt.text = q.prompt
+        val size = when {
+            (q.subject == Subject.HANZI || q.subject == Subject.PINYIN) && q.display.length <= 2 -> 150f
+            q.display.codePointCount(0, q.display.length) <= 2 -> 120f
+            q.display.length <= 10 -> 80f
+            else -> 52f
+        }
+        display.setTextSize(TypedValue.COMPLEX_UNIT_SP, size)
+        showDisplay(q.display)
+        badge.visibility = INVISIBLE
+        when (item.mode) {
+            AnswerMode.VOICE -> showVoice()
+            AnswerMode.CHOICE -> showChoices(item)
+        }
+        phase = Phase.READY
+    }
+
+    private fun showVoice() {
+        choiceRow.visibility = GONE
+        choiceRow.removeAllViews()
+        choiceViews = emptyList()
+        voiceRow.visibility = VISIBLE
+        mic.listening = false
+        setStatus(if (asr == null) "还没有设置语音识别，请家长在手机上设置" else READY_TEXT, asr == null)
+        requestFocus()
+    }
+
+    private fun showChoices(item: QuizItem) {
+        voiceRow.visibility = GONE
+        choiceRow.visibility = VISIBLE
+        choiceRow.removeAllViews()
+        // 选项短（拼音、数字）排一行；有长单词时排成两列，避免挤出题卡
+        val long = item.choices.any { it.length > 6 }
+        choiceRow.columnCount = if (long) 2 else item.choices.size
+        val (w, h, sp) = if (long) Triple(250, 62, 24f) else Triple(130, 72, 30f)
+        choiceViews = item.choices.mapIndexed { i, label ->
+            TextView(context).apply {
+                text = label
+                gravity = Gravity.CENTER
+                typeface = BOLD
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, sp)
+                maxLines = 1
+                setTextColor(theme.ink)
+                isFocusable = true
+                val normal = pill(context, theme.bgTop, theme.starEmpty, 3)
+                val focused = pill(context, theme.accent)
+                background = normal
+                setOnFocusChangeListener { v, has ->
+                    v.background = if (has) focused else normal
+                    (v as TextView).setTextColor(if (has) Color.WHITE else theme.ink)
+                    v.animate().scaleX(if (has) 1.14f else 1f).scaleY(if (has) 1.14f else 1f)
+                        .setInterpolator(OvershootInterpolator(3f)).setDuration(200).start()
+                }
+                setOnClickListener { if (phase == Phase.READY) choose(i) }
+            }.also {
+                choiceRow.addView(it, android.widget.GridLayout.LayoutParams().apply {
+                    width = context.dp(w); height = context.dp(h)
+                    setMargins(context.dp(10), context.dp(6), context.dp(10), context.dp(6))
+                })
+            }
+        }
+        // 选项依次弹出
+        choiceViews.forEachIndexed { i, v ->
+            v.scaleX = 0.3f; v.scaleY = 0.3f; v.alpha = 0f
+            v.animate().scaleX(1f).scaleY(1f).alpha(1f).setStartDelay(120L + i * 70L)
+                .setInterpolator(OvershootInterpolator(2.2f)).setDuration(320).start()
+        }
+        choiceViews.firstOrNull()?.requestFocus()
+    }
+
+    private fun readQuestion() {
+        if (released) return
+        speaker.speak(tts, session.current.question.speakText)
+    }
+
+    // ---- 按键 ----
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (gate != null) return super.dispatchKeyEvent(event)
+        if (VoiceKey.matches(event)) {
+            onVoiceKey(event); return true
+        }
+        if (event.keyCode == KeyEvent.KEYCODE_MENU) {
+            // 2 秒内连按 3 次菜单键打开家长面板。小米系统会拦下菜单键、松开后再补发一次瞬时按键，
+            // 测不出按住时长，所以不用长按。面板只有扫码入口，孩子误打开也无法解锁。
+            if (event.action == KeyEvent.ACTION_UP) {
+                val now = event.eventTime
+                menuPresses.removeAll { now - it > 2000 }
+                menuPresses += now
+                if (menuPresses.size >= 3) { menuPresses.clear(); openParentGate() }
+            }
+            return true
+        }
+        if (event.action == KeyEvent.ACTION_DOWN) {
+            when (event.keyCode) {
+                KeyEvent.KEYCODE_BACK -> { if (preview) finish(false) else wiggleMascot(); return true }
+            }
+        }
+        if (choiceViews.isEmpty()) return true // 语音题不需要方向键，吞掉以免焦点跑掉
+        return super.dispatchKeyEvent(event)
+    }
+
+    private fun onVoiceKey(event: KeyEvent) {
+        val item = session.current
+        if (item.mode != AnswerMode.VOICE || asr == null) return
+        when (event.action) {
+            KeyEvent.ACTION_DOWN -> if (event.repeatCount == 0 && phase == Phase.READY) startListening()
+            KeyEvent.ACTION_UP -> if (phase == Phase.LISTENING) recorder.stop()
+        }
+    }
+
+    private fun startListening() {
+        speaker.stop()
+        phase = Phase.LISTENING
+        mic.listening = true
+        setStatus("我在听…说完松开按键")
+        recorder.start(object : VoiceRecorder.Listener {
+            override fun onLevel(level: Float) = mic.setLevel(level)
+            override fun onFinished(pcm: ByteArray) { main.post { onRecorded(pcm) } }
+            override fun onError(message: String) { main.post { mic.listening = false; phase = Phase.READY; setStatus(message, true) } }
+        })
+    }
+
+    private fun onRecorded(pcm: ByteArray) {
+        if (released) return
+        mic.listening = false
+        if (VoiceRecorder.durationMs(pcm) < 400) {
+            phase = Phase.READY
+            setStatus("要一直按住语音键说话哦", true)
+            return
+        }
+        phase = Phase.THINKING
+        setStatus("我想想", thinking = true)
+        val item = session.current
+        val provider = asr ?: return
+        worker.execute {
+            val result = runCatching { provider.recognize(pcm, item.question.subject.speechLanguage) }
+            main.post {
+                if (released) return@post
+                result.fold(
+                    onSuccess = { heard -> judge(item, heard, AnswerMatcher.isCorrect(item.question.subject, heard, item.question.answers)) },
+                    onFailure = { e ->
+                        phase = Phase.READY
+                        setStatus("网络开小差了，再说一次吧", true)
+                        android.util.Log.w("QuizView", "识别失败", e)
+                    },
+                )
+            }
+        }
+    }
+
+    private fun choose(index: Int) {
+        val item = session.current
+        judge(item, item.choices[index], index == item.correctChoice)
+    }
+
+    // ---- 判分与动效 ----
+
+    private fun judge(item: QuizItem, heard: String, correct: Boolean) {
+        store.appendLog(AnswerLog(System.currentTimeMillis(), item.question.id, item.question.display, heard, correct, item.question.key))
+        val before = session.correctCount
+        when (session.answer(correct)) {
+            QuizSession.Result.DONE -> { celebrate(before); allDone() }
+            QuizSession.Result.NEXT -> { celebrate(before); main.postDelayed({ nextQuestion() }, 1500) }
+            QuizSession.Result.WRONG -> { wrong(item, heard, reset = false); main.postDelayed({ nextQuestion() }, REVEAL_MS) }
+            QuizSession.Result.RESET -> { wrong(item, heard, reset = true); resetStars(); main.postDelayed({ nextQuestion() }, REVEAL_MS) }
+        }
+    }
+
+    private fun celebrate(starIndex: Int) {
+        phase = Phase.CORRECT
+        val praise = Phrases.PRAISE.random()
+        setStatus(praise)
+        val left = session.required - session.correctCount
+        say(if (left > 0) "$praise 还差 $left 道题" else praise)
+        speaker.speak(tts, praise)
+        showBadge(true)
+        confetti.burst()
+        // 题卡弹一下
+        card.animate().scaleX(1.05f).scaleY(1.05f).setDuration(140).withEndAction {
+            spring(card, DynamicAnimation.SCALE_X, 1f, SpringForce.STIFFNESS_MEDIUM, 0.35f)
+            spring(card, DynamicAnimation.SCALE_Y, 1f, SpringForce.STIFFNESS_MEDIUM, 0.35f)
+        }.start()
+        (stars.getChildAt(starIndex) as? StarView)?.let { star ->
+            star.filled = true
+            star.scaleX = 0.2f; star.scaleY = 0.2f
+            star.animate().scaleX(1f).scaleY(1f).rotation(star.rotation + 144f)
+                .setInterpolator(OvershootInterpolator(3.5f)).setDuration(520).start()
+        }
+    }
+
+    /** 答错：公布正确答案并朗读，停留 [REVEAL_MS] 让孩子看清，之后换下一题。 */
+    private fun wrong(item: QuizItem, heard: String, reset: Boolean) {
+        phase = Phase.WRONG
+        speaker.stop()
+        val answer = if (item.mode == AnswerMode.CHOICE) item.choices[item.correctChoice] else item.question.answers.first()
+        setStatus("正确答案是「$answer」" + if (reset) "，要重新开始哦" else "", true)
+        say(if (item.mode == AnswerMode.VOICE && heard.isNotBlank()) "我听到的是「${heard.take(12)}」" else "不对哦，记住答案")
+        // 拼音答案带声调符号，朗读会读错，这类题只显示不朗读
+        if (item.question.subject != Subject.PINYIN) speaker.speak(tts, "不对哦，正确答案是$answer")
+        showBadge(false)
+        if (item.mode == AnswerMode.CHOICE) highlightAnswer(item.correctChoice)
+        ObjectAnimator.ofFloat(card, "translationX", 0f, -28f, 28f, -18f, 18f, -8f, 8f, 0f).setDuration(480).start()
+        wiggleMascot()
+    }
+
+    /** 选择题答错后标出正确选项，其余选项不再可选。 */
+    private fun highlightAnswer(correct: Int) {
+        choiceViews.forEachIndexed { i, v ->
+            v.isFocusable = false
+            v.clearFocus()
+            if (i == correct) {
+                v.background = pill(context, theme.success)
+                v.setTextColor(Color.WHITE)
+                v.animate().scaleX(1.14f).scaleY(1.14f).setInterpolator(OvershootInterpolator(3f)).setDuration(200).start()
+            }
+        }
+    }
+
+    private fun resetStars() {
+        for (i in 0 until stars.childCount) {
+            val star = stars.getChildAt(i) as StarView
+            if (star.filled) star.animate().scaleX(0.6f).scaleY(0.6f).setDuration(160).withEndAction {
+                star.filled = false
+                star.animate().scaleX(1f).scaleY(1f).setDuration(200).start()
+            }.start()
+        }
+    }
+
+    private fun nextQuestion() {
+        if (released) return
+        val w = card.width.toFloat()
+        card.animate().translationX(-w * 0.35f).alpha(0f).setInterpolator(AccelerateInterpolator())
+            .setDuration(220).withEndAction {
+                bind(session.current)
+                card.translationX = w * 0.35f
+                card.animate().alpha(1f).setDuration(200).setInterpolator(null).start()
+                spring(card, DynamicAnimation.TRANSLATION_X, 0f, SpringForce.STIFFNESS_LOW, 0.7f)
+                main.postDelayed({ readQuestion() }, 300)
+            }.start()
+    }
+
+    private fun allDone() {
+        phase = Phase.DONE
+        main.postDelayed({
+            if (released) return@postDelayed
+            prompt.text = ""
+            showDisplay("🎉")
+            badge.animate().scaleX(0f).scaleY(0f).setDuration(200).start()
+            setStatus("全部答对，太棒啦！")
+            say("全部答对，太棒啦！可以继续看啦")
+            voiceRow.visibility = VISIBLE
+            choiceRow.visibility = GONE
+            mic.visibility = INVISIBLE
+            speaker.speak(tts, Phrases.ALL_DONE)
+            confetti.burst(110)
+            for (i in 0 until stars.childCount) {
+                stars.getChildAt(i).animate().translationY(-context.dp(14f)).setStartDelay(i * 90L).setDuration(180)
+                    .withEndAction { stars.getChildAt(i).animate().translationY(0f).setStartDelay(0).setDuration(260).setInterpolator(OvershootInterpolator(3f)).start() }
+                    .start()
+            }
+            main.postDelayed({ finish(true) }, 2400)
+        }, 900)
+    }
+
+    private fun finish(passed: Boolean) {
+        if (released) return
+        animate().alpha(0f).scaleX(1.04f).scaleY(1.04f).setDuration(320).withEndAction { onFinish(passed) }.start()
+    }
+
+    // ---- 家长解锁 ----
+
+    /** 家长扫码在手机上解锁（手机端会直接关闭本界面）；电视端密码通过时这里直接放行。 */
+    private fun openParentGate() {
+        if (phase == Phase.LISTENING) recorder.stop()
+        val g = ParentGate(context, theme, "家长解锁", "unlock") { pinVerified ->
+            removeView(gate)
+            gate = null
+            requestFocus()
+            choiceViews.firstOrNull()?.requestFocus()
+            if (pinVerified) { speaker.stop(); finish(true) }
+        }
+        gate = g
+        addView(g, LayoutParams(-1, -1))
+    }
+
+    // ---- 小工具 ----
+
+    /** 单个表情用图片显示（电视没有彩色表情字体），其余按文字显示。 */
+    private fun showDisplay(text: String) {
+        val emoji = Emoji.single(context, text)
+        if (emoji != null) {
+            display.visibility = INVISIBLE
+            displayImage.visibility = VISIBLE
+            displayImage.setImageBitmap(Emoji.bitmap(context, emoji))
+            displayImage.scaleX = 0.4f; displayImage.scaleY = 0.4f
+            displayImage.animate().scaleX(1f).scaleY(1f).setInterpolator(OvershootInterpolator(2.4f)).setDuration(420).start()
+        } else {
+            displayImage.visibility = GONE
+            display.visibility = VISIBLE
+            display.setEmojiText(text)
+        }
+    }
+
+    private fun setStatus(text: String, warn: Boolean = false, thinking: Boolean = false) {
+        status.text = text
+        status.setTextColor(if (warn) theme.error else theme.ink)
+        dots.visibility = if (thinking) VISIBLE else GONE
+        status.alpha = 0f
+        status.translationY = context.dp(8f)
+        status.animate().alpha(1f).translationY(0f).setDuration(200).start()
+    }
+
+    /** 顶部对话气泡换一句话，带弹出效果。 */
+    private fun say(text: String) {
+        bubble.text = text
+        bubble.scaleX = 0.85f; bubble.scaleY = 0.85f
+        bubble.animate().scaleX(1f).scaleY(1f).setInterpolator(OvershootInterpolator(3f)).setDuration(320).start()
+    }
+
+    private fun showBadge(correct: Boolean) {
+        badge.set(correct, if (correct) theme.success else theme.error)
+        badge.visibility = VISIBLE
+        badge.translationY = -context.dp(26f)
+        badge.scaleX = 0f; badge.scaleY = 0f
+        badge.animate().scaleX(1f).scaleY(1f).setInterpolator(OvershootInterpolator(4f)).setDuration(360).start()
+    }
+
+    private fun wiggleMascot() {
+        ObjectAnimator.ofFloat(mascot, "rotation", 0f, -14f, 12f, -8f, 4f, 0f).setDuration(600).start()
+    }
+
+    private fun spring(view: View, property: DynamicAnimation.ViewProperty, target: Float, stiffness: Float, damping: Float) {
+        SpringAnimation(view, property, target).apply {
+            spring.stiffness = stiffness
+            spring.dampingRatio = damping
+            start()
+        }
+    }
+
+    companion object {
+        private const val READY_TEXT = "按住遥控器上的语音键，说出答案"
+        /** 答错后公布答案的停留时间。 */
+        private const val REVEAL_MS = 4000L
+    }
+}

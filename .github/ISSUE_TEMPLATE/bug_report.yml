@@ -1,0 +1,52 @@
+name: 缺陷报告
+description: 功能不符合预期、报错或崩溃
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        提交前请搜索是否已有相同 Issue。**日志和截图里的语音服务密钥、家长密码、局域网地址请先脱敏。**
+        目前只在小米电视上验证过，其他品牌的电视请尽量附上 `adb logcat` 日志。
+  - type: textarea
+    id: what
+    attributes:
+      label: 发生了什么
+      description: 期望的行为和实际的行为
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      placeholder: |
+        1. ...
+        2. ...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: 学习小助手版本
+      description: 电视首页右下角或 Release 页面的版本号
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: 电视型号和系统版本
+      placeholder: 小米电视 4A 32 英寸，Android 6.0.1，MIUI TV 1.3
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: 出问题的地方
+      options: [计时与锁定, 答题界面, 语音识别, 朗读, 手机管理页, 题库包, 安装与授权, 其他]
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: 日志
+      description: "`adb logcat -d | grep -i studyhelper`，或手机管理页的报错"
+      render: text

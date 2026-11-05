@@ -1,0 +1,193 @@
+{
+ "format": "studyhelper-pack",
+ "formatVersion": 1,
+ "id": "builtin.english-words",
+ "version": 1,
+ "name": "常见英语单词",
+ "icon": "🍎",
+ "description": "水果、动物和身边的东西，看图说英语",
+ "author": "学习小助手",
+ "license": "CC-BY-SA-4.0",
+ "tags": [
+  "英语",
+  "启蒙"
+ ],
+ "questions": [
+  {
+   "id": "en-0",
+   "subject": "ENGLISH",
+   "prompt": "香蕉的英语是什么？",
+   "display": "🍌",
+   "answers": [
+    "banana"
+   ]
+  },
+  {
+   "id": "en-1",
+   "subject": "ENGLISH",
+   "prompt": "苹果的英语是什么？",
+   "display": "🍎",
+   "answers": [
+    "apple"
+   ]
+  },
+  {
+   "id": "en-2",
+   "subject": "ENGLISH",
+   "prompt": "橙子的英语是什么？",
+   "display": "🍊",
+   "answers": [
+    "orange"
+   ]
+  },
+  {
+   "id": "en-3",
+   "subject": "ENGLISH",
+   "prompt": "西瓜的英语是什么？",
+   "display": "🍉",
+   "answers": [
+    "watermelon"
+   ]
+  },
+  {
+   "id": "en-4",
+   "subject": "ENGLISH",
+   "prompt": "葡萄的英语是什么？",
+   "display": "🍇",
+   "answers": [
+    "grape"
+   ]
+  },
+  {
+   "id": "en-5",
+   "subject": "ENGLISH",
+   "prompt": "草莓的英语是什么？",
+   "display": "🍓",
+   "answers": [
+    "strawberry"
+   ]
+  },
+  {
+   "id": "en-6",
+   "subject": "ENGLISH",
+   "prompt": "小猫的英语是什么？",
+   "display": "🐱",
+   "answers": [
+    "cat"
+   ]
+  },
+  {
+   "id": "en-7",
+   "subject": "ENGLISH",
+   "prompt": "小狗的英语是什么？",
+   "display": "🐶",
+   "answers": [
+    "dog"
+   ]
+  },
+  {
+   "id": "en-8",
+   "subject": "ENGLISH",
+   "prompt": "鱼的英语是什么？",
+   "display": "🐟",
+   "answers": [
+    "fish"
+   ]
+  },
+  {
+   "id": "en-9",
+   "subject": "ENGLISH",
+   "prompt": "小鸟的英语是什么？",
+   "display": "🐦",
+   "answers": [
+    "bird"
+   ]
+  },
+  {
+   "id": "en-10",
+   "subject": "ENGLISH",
+   "prompt": "熊猫的英语是什么？",
+   "display": "🐼",
+   "answers": [
+    "panda"
+   ]
+  },
+  {
+   "id": "en-11",
+   "subject": "ENGLISH",
+   "prompt": "兔子的英语是什么？",
+   "display": "🐰",
+   "answers": [
+    "rabbit"
+   ]
+  },
+  {
+   "id": "en-12",
+   "subject": "ENGLISH",
+   "prompt": "汽车的英语是什么？",
+   "display": "🚗",
+   "answers": [
+    "car"
+   ]
+  },
+  {
+   "id": "en-13",
+   "subject": "ENGLISH",
+   "prompt": "书的英语是什么？",
+   "display": "📖",
+   "answers": [
+    "book"
+   ]
+  },
+  {
+   "id": "en-14",
+   "subject": "ENGLISH",
+   "prompt": "太阳的英语是什么？",
+   "display": "☀️",
+   "answers": [
+    "sun"
+   ]
+  },
+  {
+   "id": "en-15",
+   "subject": "ENGLISH",
+   "prompt": "月亮的英语是什么？",
+   "display": "🌙",
+   "answers": [
+    "moon"
+   ]
+  },
+  {
+   "id": "ch-0",
+   "subject": "ENGLISH",
+   "mode": "CHOICE",
+   "prompt": "苹果的英语是哪一个？",
+   "display": "🍎",
+   "answers": [
+    "apple"
+   ],
+   "choices": [
+    "apple",
+    "banana",
+    "orange",
+    "grape"
+   ]
+  },
+  {
+   "id": "ch-1",
+   "subject": "ENGLISH",
+   "mode": "CHOICE",
+   "prompt": "小狗的英语是哪一个？",
+   "display": "🐶",
+   "answers": [
+    "dog"
+   ],
+   "choices": [
+    "dog",
+    "cat",
+    "fish",
+    "bird"
+   ]
+  }
+ ]
+}

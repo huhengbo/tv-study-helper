@@ -1,0 +1,633 @@
+{
+ "format": "studyhelper-pack",
+ "formatVersion": 1,
+ "id": "builtin.hanzi-grade1a",
+ "version": 1,
+ "name": "一年级上册认字",
+ "icon": "📘",
+ "description": "一年级上册常见认读字，看字读出来",
+ "author": "学习小助手",
+ "license": "CC-BY-SA-4.0",
+ "tags": [
+  "语文",
+  "一年级"
+ ],
+ "questions": [
+  {
+   "id": "hz-0",
+   "subject": "HANZI",
+   "display": "天",
+   "answers": [
+    "天"
+   ]
+  },
+  {
+   "id": "hz-1",
+   "subject": "HANZI",
+   "display": "地",
+   "answers": [
+    "地"
+   ]
+  },
+  {
+   "id": "hz-2",
+   "subject": "HANZI",
+   "display": "人",
+   "answers": [
+    "人"
+   ]
+  },
+  {
+   "id": "hz-3",
+   "subject": "HANZI",
+   "display": "你",
+   "answers": [
+    "你"
+   ]
+  },
+  {
+   "id": "hz-4",
+   "subject": "HANZI",
+   "display": "我",
+   "answers": [
+    "我"
+   ]
+  },
+  {
+   "id": "hz-5",
+   "subject": "HANZI",
+   "display": "他",
+   "answers": [
+    "他"
+   ]
+  },
+  {
+   "id": "hz-6",
+   "subject": "HANZI",
+   "display": "一",
+   "answers": [
+    "一"
+   ]
+  },
+  {
+   "id": "hz-7",
+   "subject": "HANZI",
+   "display": "二",
+   "answers": [
+    "二"
+   ]
+  },
+  {
+   "id": "hz-8",
+   "subject": "HANZI",
+   "display": "三",
+   "answers": [
+    "三"
+   ]
+  },
+  {
+   "id": "hz-9",
+   "subject": "HANZI",
+   "display": "四",
+   "answers": [
+    "四"
+   ]
+  },
+  {
+   "id": "hz-10",
+   "subject": "HANZI",
+   "display": "五",
+   "answers": [
+    "五"
+   ]
+  },
+  {
+   "id": "hz-11",
+   "subject": "HANZI",
+   "display": "上",
+   "answers": [
+    "上"
+   ]
+  },
+  {
+   "id": "hz-12",
+   "subject": "HANZI",
+   "display": "下",
+   "answers": [
+    "下"
+   ]
+  },
+  {
+   "id": "hz-13",
+   "subject": "HANZI",
+   "display": "口",
+   "answers": [
+    "口"
+   ]
+  },
+  {
+   "id": "hz-14",
+   "subject": "HANZI",
+   "display": "耳",
+   "answers": [
+    "耳"
+   ]
+  },
+  {
+   "id": "hz-15",
+   "subject": "HANZI",
+   "display": "目",
+   "answers": [
+    "目"
+   ]
+  },
+  {
+   "id": "hz-16",
+   "subject": "HANZI",
+   "display": "手",
+   "answers": [
+    "手"
+   ]
+  },
+  {
+   "id": "hz-17",
+   "subject": "HANZI",
+   "display": "足",
+   "answers": [
+    "足"
+   ]
+  },
+  {
+   "id": "hz-18",
+   "subject": "HANZI",
+   "display": "站",
+   "answers": [
+    "站"
+   ]
+  },
+  {
+   "id": "hz-19",
+   "subject": "HANZI",
+   "display": "坐",
+   "answers": [
+    "坐"
+   ]
+  },
+  {
+   "id": "hz-20",
+   "subject": "HANZI",
+   "display": "日",
+   "answers": [
+    "日"
+   ]
+  },
+  {
+   "id": "hz-21",
+   "subject": "HANZI",
+   "display": "月",
+   "answers": [
+    "月"
+   ]
+  },
+  {
+   "id": "hz-22",
+   "subject": "HANZI",
+   "display": "水",
+   "answers": [
+    "水"
+   ]
+  },
+  {
+   "id": "hz-23",
+   "subject": "HANZI",
+   "display": "火",
+   "answers": [
+    "火"
+   ]
+  },
+  {
+   "id": "hz-24",
+   "subject": "HANZI",
+   "display": "山",
+   "answers": [
+    "山"
+   ]
+  },
+  {
+   "id": "hz-25",
+   "subject": "HANZI",
+   "display": "石",
+   "answers": [
+    "石"
+   ]
+  },
+  {
+   "id": "hz-26",
+   "subject": "HANZI",
+   "display": "田",
+   "answers": [
+    "田"
+   ]
+  },
+  {
+   "id": "hz-27",
+   "subject": "HANZI",
+   "display": "禾",
+   "answers": [
+    "禾"
+   ]
+  },
+  {
+   "id": "hz-28",
+   "subject": "HANZI",
+   "display": "对",
+   "answers": [
+    "对"
+   ]
+  },
+  {
+   "id": "hz-29",
+   "subject": "HANZI",
+   "display": "云",
+   "answers": [
+    "云"
+   ]
+  },
+  {
+   "id": "hz-30",
+   "subject": "HANZI",
+   "display": "雨",
+   "answers": [
+    "雨"
+   ]
+  },
+  {
+   "id": "hz-31",
+   "subject": "HANZI",
+   "display": "风",
+   "answers": [
+    "风"
+   ]
+  },
+  {
+   "id": "hz-32",
+   "subject": "HANZI",
+   "display": "花",
+   "answers": [
+    "花"
+   ]
+  },
+  {
+   "id": "hz-33",
+   "subject": "HANZI",
+   "display": "鸟",
+   "answers": [
+    "鸟"
+   ]
+  },
+  {
+   "id": "hz-34",
+   "subject": "HANZI",
+   "display": "虫",
+   "answers": [
+    "虫"
+   ]
+  },
+  {
+   "id": "hz-35",
+   "subject": "HANZI",
+   "display": "六",
+   "answers": [
+    "六"
+   ]
+  },
+  {
+   "id": "hz-36",
+   "subject": "HANZI",
+   "display": "七",
+   "answers": [
+    "七"
+   ]
+  },
+  {
+   "id": "hz-37",
+   "subject": "HANZI",
+   "display": "八",
+   "answers": [
+    "八"
+   ]
+  },
+  {
+   "id": "hz-38",
+   "subject": "HANZI",
+   "display": "九",
+   "answers": [
+    "九"
+   ]
+  },
+  {
+   "id": "hz-39",
+   "subject": "HANZI",
+   "display": "十",
+   "answers": [
+    "十"
+   ]
+  },
+  {
+   "id": "hz-40",
+   "subject": "HANZI",
+   "display": "爸",
+   "answers": [
+    "爸"
+   ]
+  },
+  {
+   "id": "hz-41",
+   "subject": "HANZI",
+   "display": "妈",
+   "answers": [
+    "妈"
+   ]
+  },
+  {
+   "id": "hz-42",
+   "subject": "HANZI",
+   "display": "马",
+   "answers": [
+    "马"
+   ]
+  },
+  {
+   "id": "hz-43",
+   "subject": "HANZI",
+   "display": "土",
+   "answers": [
+    "土"
+   ]
+  },
+  {
+   "id": "hz-44",
+   "subject": "HANZI",
+   "display": "不",
+   "answers": [
+    "不"
+   ]
+  },
+  {
+   "id": "hz-45",
+   "subject": "HANZI",
+   "display": "画",
+   "answers": [
+    "画"
+   ]
+  },
+  {
+   "id": "hz-46",
+   "subject": "HANZI",
+   "display": "打",
+   "answers": [
+    "打"
+   ]
+  },
+  {
+   "id": "hz-47",
+   "subject": "HANZI",
+   "display": "棋",
+   "answers": [
+    "棋"
+   ]
+  },
+  {
+   "id": "hz-48",
+   "subject": "HANZI",
+   "display": "鸡",
+   "answers": [
+    "鸡"
+   ]
+  },
+  {
+   "id": "hz-49",
+   "subject": "HANZI",
+   "display": "字",
+   "answers": [
+    "字"
+   ]
+  },
+  {
+   "id": "hz-50",
+   "subject": "HANZI",
+   "display": "词",
+   "answers": [
+    "词"
+   ]
+  },
+  {
+   "id": "hz-51",
+   "subject": "HANZI",
+   "display": "语",
+   "answers": [
+    "语"
+   ]
+  },
+  {
+   "id": "hz-52",
+   "subject": "HANZI",
+   "display": "句",
+   "answers": [
+    "句"
+   ]
+  },
+  {
+   "id": "hz-53",
+   "subject": "HANZI",
+   "display": "子",
+   "answers": [
+    "子"
+   ]
+  },
+  {
+   "id": "hz-54",
+   "subject": "HANZI",
+   "display": "桌",
+   "answers": [
+    "桌"
+   ]
+  },
+  {
+   "id": "hz-55",
+   "subject": "HANZI",
+   "display": "纸",
+   "answers": [
+    "纸"
+   ]
+  },
+  {
+   "id": "hz-56",
+   "subject": "HANZI",
+   "display": "文",
+   "answers": [
+    "文"
+   ]
+  },
+  {
+   "id": "hz-57",
+   "subject": "HANZI",
+   "display": "数",
+   "answers": [
+    "数"
+   ]
+  },
+  {
+   "id": "hz-58",
+   "subject": "HANZI",
+   "display": "学",
+   "answers": [
+    "学"
+   ]
+  },
+  {
+   "id": "hz-59",
+   "subject": "HANZI",
+   "display": "音",
+   "answers": [
+    "音"
+   ]
+  },
+  {
+   "id": "hz-60",
+   "subject": "HANZI",
+   "display": "乐",
+   "answers": [
+    "乐"
+   ]
+  },
+  {
+   "id": "hz-61",
+   "subject": "HANZI",
+   "display": "妹",
+   "answers": [
+    "妹"
+   ]
+  },
+  {
+   "id": "hz-62",
+   "subject": "HANZI",
+   "display": "奶",
+   "answers": [
+    "奶"
+   ]
+  },
+  {
+   "id": "hz-63",
+   "subject": "HANZI",
+   "display": "白",
+   "answers": [
+    "白"
+   ]
+  },
+  {
+   "id": "hz-64",
+   "subject": "HANZI",
+   "display": "皮",
+   "answers": [
+    "皮"
+   ]
+  },
+  {
+   "id": "hz-65",
+   "subject": "HANZI",
+   "display": "小",
+   "answers": [
+    "小"
+   ]
+  },
+  {
+   "id": "hz-66",
+   "subject": "HANZI",
+   "display": "桥",
+   "answers": [
+    "桥"
+   ]
+  },
+  {
+   "id": "hz-67",
+   "subject": "HANZI",
+   "display": "台",
+   "answers": [
+    "台"
+   ]
+  },
+  {
+   "id": "hz-68",
+   "subject": "HANZI",
+   "display": "雪",
+   "answers": [
+    "雪"
+   ]
+  },
+  {
+   "id": "hz-69",
+   "subject": "HANZI",
+   "display": "儿",
+   "answers": [
+    "儿"
+   ]
+  },
+  {
+   "id": "hz-70",
+   "subject": "HANZI",
+   "display": "草",
+   "answers": [
+    "草"
+   ]
+  },
+  {
+   "id": "hz-71",
+   "subject": "HANZI",
+   "display": "家",
+   "answers": [
+    "家"
+   ]
+  },
+  {
+   "id": "hz-72",
+   "subject": "HANZI",
+   "display": "是",
+   "answers": [
+    "是"
+   ]
+  },
+  {
+   "id": "hz-73",
+   "subject": "HANZI",
+   "display": "车",
+   "answers": [
+    "车"
+   ]
+  },
+  {
+   "id": "hz-74",
+   "subject": "HANZI",
+   "display": "羊",
+   "answers": [
+    "羊"
+   ]
+  },
+  {
+   "id": "hz-75",
+   "subject": "HANZI",
+   "display": "走",
+   "answers": [
+    "走"
+   ]
+  },
+  {
+   "id": "hz-76",
+   "subject": "HANZI",
+   "display": "也",
+   "answers": [
+    "也"
+   ]
+  }
+ ]
+}

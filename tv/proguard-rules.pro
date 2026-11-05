@@ -1,0 +1,3 @@
+-keep class net.sourceforge.pinyin4j.** { *; }
+-dontwarn net.sourceforge.pinyin4j.**
+-keep class fi.iki.elonen.** { *; }

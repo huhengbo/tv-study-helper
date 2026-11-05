@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">学习小助手</string>
+    <string name="a11y_description">统计指定 App 的观看时间；答题期间屏蔽主页键，防止孩子切走。</string>
+</resources>
