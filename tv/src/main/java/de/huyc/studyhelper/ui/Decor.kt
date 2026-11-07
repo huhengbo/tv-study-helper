@@ -2,7 +2,6 @@ package de.huyc.studyhelper.ui
 
 import android.animation.Animator
 import android.animation.AnimatorListenerAdapter
-import android.animation.ObjectAnimator
 import android.animation.ValueAnimator
 import android.content.Context
 import android.graphics.Canvas
@@ -11,7 +10,6 @@ import android.graphics.Path
 import android.graphics.RectF
 import android.graphics.drawable.GradientDrawable
 import android.view.View
-import android.view.animation.AccelerateDecelerateInterpolator
 import android.view.animation.LinearInterpolator
 import android.widget.FrameLayout
 import android.widget.ImageView
@@ -22,12 +20,10 @@ import kotlin.math.sin
 import kotlin.random.Random
 
 /**
- * 渐变背景 + 缓慢漂浮的柔和色块。每个色块是独立的硬件层 View，只做平移/缩放动画，
- * 由 GPU 合成，不触发整屏重绘——电视的 Mali-450 GPU 较弱，这样才能保持流畅。
- * [animated] 为 false 时色块和表情静止不动：答题浮层里一直动会让整屏每帧重画，在电视 4A 上只有约 20 帧，看着一闪一闪。
+ * 渐变背景 + 柔和色块和主题表情，全部静止。
+ * 以前色块和表情一直漂动，在电视 4A（Mali-450）上整屏每帧重画，答题页、首页、贴纸册看着一闪一闪、发抖。
  */
-class FloatingBackground(context: Context, theme: ThemeSpec, private val animated: Boolean = true) : FrameLayout(context) {
-    private val animators = mutableListOf<Animator>()
+class FloatingBackground(context: Context, theme: ThemeSpec) : FrameLayout(context) {
 
     init {
         background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(theme.bgTop, theme.bgBottom))
@@ -37,39 +33,20 @@ class FloatingBackground(context: Context, theme: ThemeSpec, private val animate
             val size = context.dp(120 + rnd.nextInt(140))
             val blob = View(context).apply {
                 background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(theme.blobs[i % theme.blobs.size]) }
-                if (animated) setLayerType(LAYER_TYPE_HARDWARE, null)
             }
             addView(blob, LayoutParams(size, size))
             blob.tag = floatArrayOf(fx, fy)
-            val drift = context.dp(40f + rnd.nextInt(40))
-            animators += ObjectAnimator.ofFloat(blob, "translationY", -drift, drift).apply {
-                duration = 6000L + rnd.nextInt(5000); repeatCount = ValueAnimator.INFINITE
-                repeatMode = ValueAnimator.REVERSE; interpolator = AccelerateDecelerateInterpolator()
-            }
-            animators += ObjectAnimator.ofFloat(blob, "translationX", -drift / 2, drift / 2).apply {
-                duration = 8000L + rnd.nextInt(5000); repeatCount = ValueAnimator.INFINITE
-                repeatMode = ValueAnimator.REVERSE; interpolator = AccelerateDecelerateInterpolator()
-            }
         }
-        // 主题表情：只出现在四周，漂浮、轻轻摇摆
+        // 主题表情：只出现在四周，略微歪一点
         val edges = listOf(0.04f to 0.45f, 0.95f to 0.42f, 0.32f to 0.07f, 0.74f to 0.94f, 0.5f to 0.95f, 0.94f to 0.92f, 0.5f to 0.04f, 0.97f to 0.2f)
         theme.decor.take(edges.size).forEachIndexed { i, code ->
             val bmp = Emoji.bitmap(context, code) ?: return@forEachIndexed
             val size = context.dp(64 + rnd.nextInt(40))
             val sprite = ImageView(context).apply {
-                setImageBitmap(bmp); alpha = 0.7f
-                if (animated) setLayerType(LAYER_TYPE_HARDWARE, null)
+                setImageBitmap(bmp); alpha = 0.7f; rotation = rnd.nextInt(-12, 13).toFloat()
             }
             addView(sprite, LayoutParams(size, size))
             sprite.tag = floatArrayOf(edges[i].first, edges[i].second)
-            animators += ObjectAnimator.ofFloat(sprite, "translationY", -context.dp(16f), context.dp(16f)).apply {
-                duration = 3500L + rnd.nextInt(2500); repeatCount = ValueAnimator.INFINITE
-                repeatMode = ValueAnimator.REVERSE; interpolator = AccelerateDecelerateInterpolator()
-            }
-            animators += ObjectAnimator.ofFloat(sprite, "rotation", -12f, 12f).apply {
-                duration = 2500L + rnd.nextInt(2000); repeatCount = ValueAnimator.INFINITE
-                repeatMode = ValueAnimator.REVERSE; interpolator = AccelerateDecelerateInterpolator()
-            }
         }
     }
 
@@ -84,8 +61,6 @@ class FloatingBackground(context: Context, theme: ThemeSpec, private val animate
         }
     }
 
-    override fun onAttachedToWindow() { super.onAttachedToWindow(); if (animated) animators.forEach { it.start() } }
-    override fun onDetachedFromWindow() { animators.forEach { it.cancel() }; super.onDetachedFromWindow() }
 }
 
 /** 白色圆角卡片 + 柔和投影。 */

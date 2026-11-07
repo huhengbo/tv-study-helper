@@ -14,7 +14,6 @@ import android.os.Handler
 import android.os.Looper
 import android.view.Gravity
 import android.view.View
-import android.view.animation.AccelerateDecelerateInterpolator
 import android.view.animation.DecelerateInterpolator
 import android.view.animation.OvershootInterpolator
 import android.widget.FrameLayout
@@ -52,7 +51,6 @@ class MainActivity : Activity() {
     private lateinit var stamps: LinearLayout
     private lateinit var lock: FrameLayout
     private lateinit var hint: TextView
-    private var wiggle: ObjectAnimator? = null
     private var ticks = 0
     private var entered = false
     private var lastFocused: View? = null
@@ -196,8 +194,6 @@ class MainActivity : Activity() {
         if (firstTime) {
             entered = true
             entrance()
-        } else {
-            startIdle()
         }
         userMoved = false
         val target = lastFocused ?: studyTile
@@ -217,7 +213,6 @@ class MainActivity : Activity() {
     override fun onPause() {
         lastFocused = currentFocus
         handler.removeCallbacksAndMessages(null)
-        wiggle?.cancel()
         app.speaker.stop()
         super.onPause()
     }
@@ -314,23 +309,11 @@ class MainActivity : Activity() {
         ObjectAnimator.ofFloat(note, View.ROTATION, 4f, -3f, 8f, -1f, 4f).setDuration(600).start()
     }
 
-    /** 待机：吉祥物慢慢歪头。 */
-    private fun startIdle() {
-        wiggle?.cancel()
-        wiggle = ObjectAnimator.ofFloat(peek, View.ROTATION, -8f, -2f).apply {
-            duration = 1800
-            repeatMode = ValueAnimator.REVERSE
-            repeatCount = ValueAnimator.INFINITE
-            interpolator = AccelerateDecelerateInterpolator()
-            start()
-        }
-    }
-
     /** 第一次进入：吉祥物探出头，荧光笔划出标题，贴纸一张张拍到纸上，便利贴掉下来。 */
     private fun entrance() {
         peek.alpha = 0f; peek.translationY = dp(60f); peek.rotation = -30f
         peek.animate().alpha(1f).translationY(0f).rotation(-8f).setDuration(560)
-            .setInterpolator(OvershootInterpolator(1.8f)).withEndAction { startIdle() }.start()
+            .setInterpolator(OvershootInterpolator(1.8f)).start()
         title.alpha = 0f; title.translationY = dp(10f)
         title.animate().alpha(1f).translationY(0f).setStartDelay(150).setDuration(360).start()
         band.progress = 0f

@@ -12,7 +12,6 @@ import android.graphics.RectF
 import android.graphics.Typeface
 import android.view.Gravity
 import android.view.View
-import android.view.animation.AccelerateDecelerateInterpolator
 import android.view.animation.DecelerateInterpolator
 import android.view.animation.OvershootInterpolator
 import android.widget.LinearLayout
@@ -82,7 +81,7 @@ class PaperBackground(context: Context, theme: ThemeSpec) : View(context) {
 
 /**
  * 一张贴纸：白色异形底，顶上一条斜纹胶带，中间是图标。
- * [lift] 0~1 表示抬起的程度（阴影加深、下移），[iconScale] 用于选中时的"呼吸"。
+ * [lift] 0~1 表示抬起的程度（阴影加深、下移），[iconScale] 用于选中时图标跳一下。
  */
 class StickerDie(context: Context, tape: Int, iconDp: Int) : View(context) {
     private val pad = context.dp(26f)
@@ -224,7 +223,7 @@ class Squiggle(context: Context, color: Int) : View(context) {
 
 /**
  * 首页上的一个入口：贴纸 + 手写名字 + 选中时出现的说明。整体倾斜 [tilt] 度。
- * 选中时摆正、抬起、放大，图标跳一下然后轻轻呼吸，名字下画出波浪线；按确认先压一下再进入。
+ * 选中时摆正、抬起、放大，图标跳一下，名字下画出波浪线；按确认先压一下再进入。
  */
 class StickerTile(
     context: Context,
@@ -239,7 +238,7 @@ class StickerTile(
     private val name = context.handText(label, 36f, theme.ink)
     private val squiggle = Squiggle(context, theme.accent)
     private val sub = context.themedText("", 17f, theme.inkSoft, bold = true)
-    private var breathing: ValueAnimator? = null
+    private var hopping: ValueAnimator? = null
 
     init {
         orientation = VERTICAL
@@ -281,7 +280,7 @@ class StickerTile(
         tween(die.lift, 0f, 220) { die.lift = it }
         tween(squiggle.progress, 0f, 160) { squiggle.progress = it }
         sub.animate().alpha(0f).setStartDelay(0).setDuration(140).start()
-        stopBreathing()
+        stopHop()
     }
 
     /** 用回调而不是按属性名反射，发布版混淆后也能动。 */
@@ -292,37 +291,23 @@ class StickerTile(
             start()
         }
 
-    /** 图标跳一下，再开始轻轻呼吸。只有选中的那张在动，省电视的性能。 */
+    /** 图标跳一下就停。不再一直呼吸：电视 4A 上持续缩放看着发抖、闪烁。 */
     private fun hop() {
-        stopBreathing()
-        breathing = ValueAnimator.ofFloat(1f, 1.22f, 0.94f, 1.04f, 1f).apply {
+        stopHop()
+        hopping = ValueAnimator.ofFloat(1f, 1.22f, 0.94f, 1.04f, 1f).apply {
             duration = 520
             addUpdateListener { die.iconScale = it.animatedValue as Float }
             start()
-        }.also { hop ->
-            hop.addListener(object : android.animation.AnimatorListenerAdapter() {
-                override fun onAnimationEnd(a: android.animation.Animator) {
-                    if (breathing !== hop || !hasFocus()) return
-                    breathing = ValueAnimator.ofFloat(1f, 1.06f).apply {
-                        duration = 1100
-                        repeatMode = ValueAnimator.REVERSE
-                        repeatCount = ValueAnimator.INFINITE
-                        interpolator = AccelerateDecelerateInterpolator()
-                        addUpdateListener { die.iconScale = it.animatedValue as Float }
-                        start()
-                    }
-                }
-            })
         }
     }
 
-    private fun stopBreathing() {
-        breathing?.let { it.removeAllListeners(); it.cancel() }
-        breathing = null
+    private fun stopHop() {
+        hopping?.let { it.removeAllListeners(); it.cancel() }
+        hopping = null
         die.iconScale = 1f
     }
 
-    override fun onDetachedFromWindow() { stopBreathing(); super.onDetachedFromWindow() }
+    override fun onDetachedFromWindow() { stopHop(); super.onDetachedFromWindow() }
 
     private companion object {
         const val FOCUS_SCALE = 1.12f

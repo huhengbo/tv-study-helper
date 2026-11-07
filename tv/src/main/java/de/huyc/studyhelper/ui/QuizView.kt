@@ -88,8 +88,7 @@ class QuizView(
     @Volatile private var peakLevel = 0f
 
     // ---- 视图 ----
-    // 背景不动：浮层里持续动画会整屏每帧重画，电视上看着一闪一闪
-    private val background = FloatingBackground(context, theme, animated = false)
+    private val background = FloatingBackground(context, theme)
     private val mascot = ImageView(context)
     private val bubble = TextView(context)
     private val stars = LinearLayout(context)
