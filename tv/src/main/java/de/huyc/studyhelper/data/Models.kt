@@ -278,6 +278,8 @@ data class Settings(
     val countMode: CountMode = CountMode.SELECTED_APPS,
     val apps: List<String> = emptyList(),
     val warnSeconds: Int = 60,
+    /** 只在有声音播放时才计时（暂停、缓冲、停在菜单里不算）。 */
+    val countOnlyWhenPlaying: Boolean = true,
     val resumePlayback: Boolean = true,
     val theme: String = "kids",
     /** 参与出题的科目。 */
@@ -304,6 +306,7 @@ data class Settings(
         .put("countMode", countMode.name)
         .put("apps", JSONArray(apps))
         .put("warnSeconds", warnSeconds)
+        .put("countOnlyWhenPlaying", countOnlyWhenPlaying)
         .put("resumePlayback", resumePlayback)
         .put("theme", theme)
         .put("subjects", JSONArray(subjects.map { it.name }))
@@ -328,6 +331,7 @@ data class Settings(
         countMode = o.optString("countMode").let { v -> CountMode.entries.firstOrNull { it.name == v } } ?: countMode,
         apps = o.optJSONArray("apps")?.strings() ?: apps,
         warnSeconds = o.optInt("warnSeconds", warnSeconds).coerceIn(0, 600),
+        countOnlyWhenPlaying = o.optBoolean("countOnlyWhenPlaying", countOnlyWhenPlaying),
         resumePlayback = o.optBoolean("resumePlayback", resumePlayback),
         theme = o.optString("theme", theme),
         subjects = o.optJSONArray("subjects")?.strings()

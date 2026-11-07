@@ -7,10 +7,12 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import android.media.AudioManager
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.os.PowerManager
+import android.os.SystemClock
 import de.huyc.studyhelper.App
 import de.huyc.studyhelper.R
 import de.huyc.studyhelper.data.CountMode
@@ -20,7 +22,7 @@ import de.huyc.studyhelper.web.AdminServer
 
 /**
  * 常驻前台服务：每秒计一次观看时间，到点锁定答题；同时承载手机管理网页服务。
- * 计时只在亮屏且（按设置）指定 App 在前台时累加，状态每 10 秒落盘，断电重启后继续。
+ * 计时只在亮屏、有声音播放（可关）且（按设置）指定 App 在前台时累加，状态每 10 秒落盘，断电重启后继续。
  */
 class GuardService : Service() {
     private val handler = Handler(Looper.getMainLooper())
@@ -28,6 +30,7 @@ class GuardService : Service() {
     private var server: AdminServer? = null
     private var ticks = 0
     private var warned = false
+    private var lastAudioAt = -PLAYING_GRACE_MS * 2
 
     private val tick = object : Runnable {
         override fun run() {
@@ -100,9 +103,18 @@ class GuardService : Service() {
         // 孩子在答题（含主动学习）时不计时，否则答题中途可能被锁屏打断
         if (app.lock.isShowingQuiz) return false
         val settings = app.store.settings
+        if (settings.countOnlyWhenPlaying && !isPlaying()) return false
         if (settings.countMode == CountMode.ALL) return true
         val pkg = ForegroundTracker.current(this) ?: return false
         return pkg in settings.apps
+    }
+
+    /** 有声音在播；视频缓冲或换集时声音会断几秒，按 [PLAYING_GRACE_MS] 宽限，免得误停表。 */
+    private fun isPlaying(): Boolean {
+        val audio = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        val now = SystemClock.elapsedRealtime()
+        if (audio.isMusicActive) lastAudioAt = now
+        return now - lastAudioAt <= PLAYING_GRACE_MS
     }
 
     private fun notification(): Notification {
@@ -125,6 +137,7 @@ class GuardService : Service() {
     companion object {
         private const val NOTIFICATION_ID = 1
         private const val CHANNEL = "guard"
+        private const val PLAYING_GRACE_MS = 8_000L
 
         fun start(context: Context) {
             val intent = Intent(context, GuardService::class.java)
