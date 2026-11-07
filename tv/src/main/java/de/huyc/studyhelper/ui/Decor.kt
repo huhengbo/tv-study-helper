@@ -10,6 +10,7 @@ import android.graphics.Path
 import android.graphics.RectF
 import android.graphics.drawable.GradientDrawable
 import android.view.View
+import android.view.animation.DecelerateInterpolator
 import android.view.animation.LinearInterpolator
 import android.widget.FrameLayout
 import android.widget.ImageView
@@ -125,6 +126,50 @@ class MicView(context: Context, private val theme: ThemeSpec) : View(context) {
     }
 
     override fun onDetachedFromWindow() { pulse.cancel(); super.onDetachedFromWindow() }
+}
+
+/**
+ * 抽到贴纸时图片后面散开的一圈光芒：放大、转一点、淡出，只放一次，不循环。
+ * 动画期间用硬件层，只做旋转、缩放和透明度，不重画路径。
+ */
+class RaysView(context: Context) : View(context) {
+    private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val path = Path()
+
+    init { visibility = GONE }
+
+    fun burst(color: Int) {
+        paint.color = color
+        invalidate()
+        visibility = VISIBLE
+        alpha = 0f; scaleX = 0.3f; scaleY = 0.3f; rotation = 0f
+        animate().alpha(1f).scaleX(1f).scaleY(1f).rotation(40f).setInterpolator(DecelerateInterpolator())
+            .setDuration(450).withLayer().withEndAction {
+                animate().alpha(0f).rotation(90f).setInterpolator(LinearInterpolator()).setDuration(1100).withLayer()
+                    .withEndAction { visibility = GONE }.start()
+            }.start()
+    }
+
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+        path.reset()
+        val cx = w / 2f
+        val cy = h / 2f
+        val r = min(w, h) / 2f
+        val half = PI / RAYS / 2
+        for (i in 0 until RAYS) {
+            val a = 2 * PI * i / RAYS
+            path.moveTo(cx, cy)
+            path.lineTo(cx + r * cos(a - half).toFloat(), cy + r * sin(a - half).toFloat())
+            path.lineTo(cx + r * cos(a + half).toFloat(), cy + r * sin(a + half).toFloat())
+            path.close()
+        }
+    }
+
+    override fun onDraw(canvas: Canvas) { canvas.drawPath(path, paint) }
+
+    private companion object {
+        const val RAYS = 12
+    }
 }
 
 /** 「我想想…」三个跳动的小圆点。 */

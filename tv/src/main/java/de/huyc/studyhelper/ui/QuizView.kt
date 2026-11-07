@@ -35,6 +35,8 @@ import de.huyc.studyhelper.quiz.QuizItem
 import de.huyc.studyhelper.quiz.QuizSession
 import de.huyc.studyhelper.voice.AsrProvider
 import de.huyc.studyhelper.voice.AsrSession
+import de.huyc.studyhelper.data.Draw
+import de.huyc.studyhelper.data.Rarity
 import de.huyc.studyhelper.data.RoundReward
 import de.huyc.studyhelper.quiz.QuizMode
 import de.huyc.studyhelper.voice.Phrases
@@ -96,6 +98,7 @@ class QuizView(
     private val prompt = TextView(context)
     private val display = TextView(context)
     private val displayImage = ImageView(context)
+    private val rays = RaysView(context)
     private val answerZone = FrameLayout(context)
     private val voiceRow = LinearLayout(context)
     private val mic = MicView(context, theme)
@@ -173,6 +176,9 @@ class QuizView(
         display.ellipsize = TextUtils.TruncateAt.END
         val displayBox = FrameLayout(context)
         displayBox.addView(display, LayoutParams(-1, -1))
+        // 比显示区大的正方形，转起来四角也有光芒，超出部分被显示区裁掉
+        displayBox.addView(rays, LayoutParams(context.dp(420), context.dp(420), Gravity.CENTER))
+        displayImage.cameraDistance = 12000 * resources.displayMetrics.density
         displayBox.addView(displayImage, LayoutParams(context.dp(170), context.dp(170), Gravity.CENTER))
         card.addView(displayBox, LinearLayout.LayoutParams(-1, 0, 1f))
 
@@ -544,8 +550,7 @@ class QuizView(
         val sticker = reward?.draw
         main.postDelayed({
             if (released) return@postDelayed
-            prompt.text = sticker?.let { "抽到${it.rarity.label}贴纸" + if (it.isNew) "，新的！" else "" } ?: ""
-            showDisplay(sticker?.let { Emoji.text(it.code) } ?: "🎉")
+            if (sticker != null) revealSticker(sticker) else { prompt.text = ""; showDisplay("🎉") }
             badge.animate().scaleX(0f).scaleY(0f).setDuration(200).start()
             val (statusText, sayText, speakText) = doneTexts(reward)
             setStatus(statusText)
@@ -563,6 +568,37 @@ class QuizView(
                     .start()
             }
         }, 900)
+    }
+
+    /**
+     * 抽贴纸动画：先出现礼物盒，晃两下，翻过来变成抽到的贴纸，背后散开稀有度颜色的光芒。
+     * 翻开的时刻和「抽到贴纸」音效（[STICKER_SFX_DELAY_MS]）对齐。
+     */
+    private fun revealSticker(sticker: Draw) {
+        prompt.text = "抽贴纸…"
+        showDisplay("🎁")
+        main.postDelayed({
+            if (released) return@postDelayed
+            ObjectAnimator.ofFloat(displayImage, "rotation", 0f, -12f, 12f, -9f, 9f, 0f).setDuration(REVEAL_SHAKE_MS).start()
+        }, REVEAL_SHAKE_DELAY_MS)
+        main.postDelayed({
+            if (released) return@postDelayed
+            displayImage.animate().rotationY(90f).setDuration(REVEAL_FLIP_MS).setInterpolator(AccelerateInterpolator()).withEndAction {
+                if (released) return@withEndAction
+                displayImage.setImageBitmap(Emoji.bitmap(context, sticker.code))
+                displayImage.rotationY = -90f
+                displayImage.animate().rotationY(0f).scaleX(1f).scaleY(1f).setDuration(REVEAL_FLIP_MS * 2)
+                    .setInterpolator(OvershootInterpolator(1.6f)).start()
+                rays.burst(withAlpha(rarityColor(sticker.rarity), 0.45f))
+                prompt.text = "抽到${sticker.rarity.label}贴纸" + if (sticker.isNew) "，新的！" else ""
+            }.start()
+        }, STICKER_SFX_DELAY_MS - REVEAL_FLIP_MS)
+    }
+
+    private fun rarityColor(rarity: Rarity) = when (rarity) {
+        Rarity.COMMON -> theme.accent
+        Rarity.RARE -> theme.accentDark
+        Rarity.LEGENDARY -> theme.star
     }
 
     /** 通关后显示的状态文字、气泡文字和朗读内容。 */
@@ -731,5 +767,9 @@ class QuizView(
         private const val PRELOAD_SHEETS = 4
         /** 通关号角响完后再放抽到贴纸的音效。 */
         private const val STICKER_SFX_DELAY_MS = 1100L
+        /** 抽贴纸动画：礼物盒出现后多久开始晃、晃多久，翻面一半的时长。 */
+        private const val REVEAL_SHAKE_DELAY_MS = 380L
+        private const val REVEAL_SHAKE_MS = 480L
+        private const val REVEAL_FLIP_MS = 140L
     }
 }
