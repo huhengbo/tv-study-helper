@@ -15,6 +15,7 @@ import de.huyc.studyhelper.quiz.AdaptiveMath
 import de.huyc.studyhelper.quiz.QuizMaker
 import de.huyc.studyhelper.quiz.QuizMode
 import de.huyc.studyhelper.quiz.ReviewWeights
+import de.huyc.studyhelper.ui.LockCoverActivity
 import de.huyc.studyhelper.ui.QuizActivity
 import de.huyc.studyhelper.ui.QuizView
 import de.huyc.studyhelper.ui.WarningToast
@@ -32,13 +33,19 @@ class LockController(private val context: Context, private val store: Store, pri
     private var quizView: QuizView? = null
     private var activityShowing = false
     private var warning: View? = null
+    private var pendingResume: Runnable? = null
 
     val isShowingQuiz: Boolean get() = quizView != null || activityShowing
 
+    /** 锁定并暂停其他 App 的播放；已锁定时调用会补弹答题（开机、浮层意外消失后）。 */
     fun lock() = main.post {
         store.locked = true
         dismissWarning()
+        pendingResume?.let { main.removeCallbacks(it) }
+        pendingResume = null
         media.pauseOthers()
+        // 没有悬浮窗权限时答题本身就是全屏 Activity，不用再垫一层
+        if (Settings.canDrawOverlays(context)) LockCoverActivity.show(context)
         showQuiz()
     }
 
@@ -80,7 +87,7 @@ class LockController(private val context: Context, private val store: Store, pri
         store.locked = false
         store.setUsed(0)
         store.bonusSeconds = 0
-        media.resumeOthers(store.settings.resumePlayback)
+        resumeOthers()
     }
 
     /** 手机端加时：锁定中则解锁并只给 [minutes] 分钟；未锁定则追加到本轮时长。 */
@@ -90,10 +97,21 @@ class LockController(private val context: Context, private val store: Store, pri
             store.locked = false
             store.bonusSeconds = 0
             store.setUsed((store.limitSeconds - minutes * 60).coerceAtLeast(0))
-            media.resumeOthers(store.settings.resumePlayback)
+            resumeOthers()
         } else {
             store.bonusSeconds = store.bonusSeconds + minutes * 60
         }
+    }
+
+    /** 先撤掉垫底页，等视频 App 回到前台再发继续播放，否则播放键可能落空。 */
+    private fun resumeOthers() {
+        LockCoverActivity.hide()
+        val resume = Runnable {
+            pendingResume = null
+            media.resumeOthers(store.settings.resumePlayback)
+        }
+        pendingResume = resume
+        main.postDelayed(resume, RESUME_DELAY_MS)
     }
 
     fun showWarning(remainingSeconds: Int) = main.post {
@@ -131,5 +149,9 @@ class LockController(private val context: Context, private val store: Store, pri
             WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT,
             type, flags, PixelFormat.TRANSLUCENT,
         )
+    }
+
+    private companion object {
+        const val RESUME_DELAY_MS = 800L
     }
 }

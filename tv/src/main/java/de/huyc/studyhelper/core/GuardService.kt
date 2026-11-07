@@ -74,7 +74,7 @@ class GuardService : Service() {
         if (store.paused) { warned = false; return }
         if (store.locked) {
             // 开机或浮层意外消失后重新弹出
-            if (!lock.isShowingQuiz) lock.showQuiz()
+            if (!lock.isShowingQuiz) lock.lock()
             return
         }
         if (!isCounting()) return

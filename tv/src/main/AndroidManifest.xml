@@ -44,6 +44,14 @@
             android:exported="false"
             android:launchMode="singleTask" />
 
+        <!-- 单独任务栈：关掉后回到被盖住的视频 App，而不是把本应用首页带到前台 -->
+        <activity
+            android:name=".ui.LockCoverActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:taskAffinity="de.huyc.studyhelper.cover" />
+
         <activity
             android:name=".ui.StickerBookActivity"
             android:exported="false" />
