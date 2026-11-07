@@ -55,7 +55,7 @@ class MainActivity : Activity() {
     private var entered = false
     private var lastFocused: View? = null
     private var shownStars = -1
-    /** 选中某个入口时念的话，随数据刷新。 */
+    /** 选中某个入口时念的话；「学习」「贴纸册」只看字不念，免得孩子挪一下就说一句。 */
     private val lines = mutableMapOf<View, String>()
     /** 刚进入页面时的自动聚焦不朗读，孩子按方向键挪动后才念。 */
     private var userMoved = false
@@ -257,12 +257,10 @@ class MainActivity : Activity() {
         val minutes = RewardRules.nextMinutes(rewards.earnedOn(today), s.rewardMinutesPerRound, s.rewardDailyCapMinutes)
         val canEarn = !store.paused && minutes > 0
         studyTile.setSub("答对 ${s.studyQuestionCount} 题 · 抽贴纸" + if (canEarn) " · 多看 $minutes 分钟" else "")
-        lines[studyTile] = "答对 ${s.studyQuestionCount} 道题，就能抽一张贴纸" + if (canEarn) "，还能多看 $minutes 分钟！" else "！"
 
         val latest = rewards.stickers.maxByOrNull { it.value.first }?.key
         stickerTile.setIcon(latest ?: "1f31f", dim = latest == null)
         stickerTile.setSub(if (latest == null) "还没有贴纸" else "已收集 ${rewards.stickers.size} / ${StickerCatalog.total}")
-        lines[stickerTile] = if (latest == null) "还没有贴纸呢，先去学习抽一张吧！" else "看看你收集的 ${rewards.stickers.size} 张贴纸！"
         lines[lock] = "这里是给爸爸妈妈用的哦"
     }
 
