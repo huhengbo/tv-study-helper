@@ -42,7 +42,44 @@ object AnswerMatcher {
 
     private fun numberMatches(heard: String, answer: String): Boolean {
         val expected = answer.trim().toIntOrNull() ?: return heard.contains(answer.trim())
-        return extractNumbers(heard).contains(expected)
+        return (extractNumbers(heard) + extractNumbers(fixHomophoneDigits(heard))).contains(expected)
+    }
+
+    /** 识别器常把数字听成同音字（二→而/耳，四→死，九→酒）。 */
+    private val digitHomophones = mapOf(
+        '幺' to '一', '而' to '二', '儿' to '二', '耳' to '二', '尔' to '二',
+        '山' to '三', '伞' to '三', '死' to '四', '思' to '四', '斯' to '四',
+        '无' to '五', '吴' to '五', '流' to '六', '刘' to '六', '其' to '七', '起' to '七',
+        '酒' to '九', '就' to '九',
+    )
+    private val numberFiller = Regex("^(答案|应该|我觉得|就|是|等于|得|等)+|[的啊呀呢吗啦哦]+$")
+
+    /**
+     * 整句话只有数字和同音字时才替换，避免「我就是山」这类句子被误当成数字；
+     * 其他情况原样返回。
+     */
+    private fun fixHomophoneDigits(heard: String): String {
+        val core = heard.filter { isHan(it) || it.isDigit() }.replace(numberFiller, "")
+        if (core.isEmpty() || core.none { it in digitHomophones }) return heard
+        if (!core.all { it in digitHomophones || it in digits || it in units || it.isDigit() }) return heard
+        return core.map { digitHomophones[it] ?: it }.joinToString("")
+    }
+
+    /** 0~9999 的整数读法，用来给本地识别器生成数学题的热词。 */
+    fun toChineseNumber(n: Int): String? {
+        if (n !in 0..9999) return null
+        val d = "零一二三四五六七八九"
+        if (n < 10) return d[n].toString()
+        if (n < 20) return "十" + if (n % 10 == 0) "" else d[n % 10].toString()
+        val sb = StringBuilder()
+        var zero = false
+        for (u in listOf(1000 to "千", 100 to "百", 10 to "十", 1 to "")) {
+            val v = n / u.first % 10
+            if (v == 0) { if (sb.isNotEmpty()) zero = true; continue }
+            if (zero) sb.append('零').also { zero = false }
+            sb.append(d[v]).append(u.second)
+        }
+        return sb.toString()
     }
 
     private fun englishMatches(heard: String, answer: String): Boolean {
@@ -103,6 +140,11 @@ object AnswerMatcher {
         val result = mutableListOf<Int>()
         Regex("-?\\d+").findAll(text).forEach { m -> m.value.toIntOrNull()?.let(result::add) }
         Regex("负?[零一二两三四五六七八九十百千]+").findAll(text).forEach { m ->
+            // 逐位报数（「一二」「零五」）按位拼起来，不当成数量级写法
+            if (m.value.length >= 2 && m.value.all { it in digits }) {
+                m.value.map { digits.getValue(it) }.joinToString("").toIntOrNull()?.let(result::add)
+                return@forEach
+            }
             val negative = m.value.startsWith("负")
             parseChinese(m.value.removePrefix("负"))?.let { result += if (negative) -it else it }
         }

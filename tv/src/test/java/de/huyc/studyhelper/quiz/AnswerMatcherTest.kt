@@ -53,6 +53,27 @@ class AnswerMatcherTest {
         assertFalse(AnswerMatcher.isCorrect(ENGLISH, "飒飒", listOf("sun")))
     }
 
+    @Test fun mathToleratesHomophoneAndDigitByDigit() {
+        assertTrue(AnswerMatcher.isCorrect(MATH, "而", listOf("2")))
+        assertTrue(AnswerMatcher.isCorrect(MATH, "答案是死。", listOf("4")))
+        assertTrue(AnswerMatcher.isCorrect(MATH, "幺二", listOf("12")))
+        assertTrue(AnswerMatcher.isCorrect(MATH, "一二", listOf("12")))
+        assertTrue(AnswerMatcher.isCorrect(MATH, "十酒", listOf("19")))
+        // 带有其他字的句子不做同音替换
+        assertFalse(AnswerMatcher.isCorrect(MATH, "我不知道山在哪", listOf("3")))
+        assertFalse(AnswerMatcher.isCorrect(MATH, "而", listOf("3")))
+    }
+
+    @Test fun toChineseNumber() {
+        assertEquals("七", AnswerMatcher.toChineseNumber(7))
+        assertEquals("十", AnswerMatcher.toChineseNumber(10))
+        assertEquals("十二", AnswerMatcher.toChineseNumber(12))
+        assertEquals("二十五", AnswerMatcher.toChineseNumber(25))
+        assertEquals("一百零五", AnswerMatcher.toChineseNumber(105))
+        assertEquals("一百二十", AnswerMatcher.toChineseNumber(120))
+        assertEquals(null, AnswerMatcher.toChineseNumber(-1))
+    }
+
     @Test fun extractNumbers() {
         assertEquals(listOf(7, 15), AnswerMatcher.extractNumbers("7和十五"))
         assertEquals(listOf(2), AnswerMatcher.extractNumbers("两"))

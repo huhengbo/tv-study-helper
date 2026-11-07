@@ -11,6 +11,7 @@ import com.k2fsa.sherpa.onnx.OnlineRecognizerConfig
 import com.k2fsa.sherpa.onnx.OnlineStream
 import com.k2fsa.sherpa.onnx.OnlineTransducerModelConfig
 import de.huyc.studyhelper.data.SpeechLanguage
+import de.huyc.studyhelper.quiz.AnswerMatcher
 import java.io.File
 import java.util.concurrent.Callable
 import java.util.concurrent.Executors
@@ -207,6 +208,8 @@ object LocalAsr {
      * 这个双语模型以中文为主，孩子单说一个英文词常被听成中文（sun →「飒飒」），英文热词单独加大权重。
      */
     private fun hotwords(hints: List<String>): String = hints.asSequence()
+        // 数学题答案是阿拉伯数字，识别器输出的是汉字，换成中文读法才能当热词
+        .map { h -> h.trim().toIntOrNull()?.let(AnswerMatcher::toChineseNumber) ?: h }
         .map { it.trim().uppercase() }
         .filter { h ->
             h.isNotEmpty() && h.all { c -> c == ' ' || c in 'A'..'Z' || c.toString() in tokens }
