@@ -72,13 +72,13 @@ android {
 tasks.matching { it.name == "preBuild" }.configureEach { dependsOn(bundleSharedPacks) }
 
 dependencies {
-    implementation("androidx.core:core-ktx:1.13.1")
-    implementation("androidx.dynamicanimation:dynamicanimation:1.0.0")
+    implementation("androidx.core:core-ktx:1.19.1")
+    implementation("androidx.dynamicanimation:dynamicanimation:1.1.0")
     implementation("org.nanohttpd:nanohttpd:2.3.1")
-    implementation("com.google.zxing:core:3.5.3")
+    implementation("com.google.zxing:core:3.5.4")
     implementation("com.belerweb:pinyin4j:2.5.1")
     testImplementation("junit:junit:4.13.2")
     // 仅用来对照 adb 公钥格式（core/AdbPublicKeyTest），运行时不依赖
-    testImplementation("dev.mobile:dadb:1.2.10")
-    testImplementation("org.json:json:20240303")
+    testImplementation("dev.mobile:dadb:2.0.0")
+    testImplementation("org.json:json:20260814")
 }
